@@ -1,0 +1,54 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+
+const execAsync = promisify(exec);
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { week = 1, maxPlays = 10 } = body;
+
+    // Path to the pipeline
+    const playgenDir = path.join(process.cwd(), '..', 'playgenerate');
+    const venvActivate = `source ${path.join(playgenDir, 'venv', 'bin', 'activate')}`;
+    const pythonCmd = `python3 ${path.join(playgenDir, 'src', 'pipeline.py')} --week ${week} --max-plays ${maxPlays}`;
+    
+    // Full command
+    const fullCmd = `cd ${playgenDir} && ${venvActivate} && ${pythonCmd}`;
+
+    console.log('Running pipeline:', fullCmd);
+
+    // Execute the pipeline
+    const { stdout, stderr } = await execAsync(fullCmd, {
+      timeout: 120000, // 2 minute timeout
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
+
+    console.log('Pipeline stdout:', stdout);
+    if (stderr) console.log('Pipeline stderr:', stderr);
+
+    // Parse output to extract stats
+    const linesProcessed = stdout.match(/Successfully enriched (\d+)/)?.[1] || '0';
+
+    return NextResponse.json({
+      success: true,
+      message: 'Pipeline completed successfully',
+      playsProcessed: parseInt(linesProcessed),
+      stdout: stdout.slice(-2000), // Last 2000 chars of output
+    });
+
+  } catch (error) {
+    console.error('Pipeline error:', error);
+    
+    return NextResponse.json(
+      { 
+        success: false,
+        error: 'Pipeline failed',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
+  }
+}
