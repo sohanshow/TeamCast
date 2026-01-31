@@ -68,13 +68,14 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    const { text, voiceId, turnIndex } = await request.json();
+    const body = await request.json();
+    const { text, voiceId, turnIndex } = body;
 
     if (!text || !voiceId) {
       return NextResponse.json({ error: 'text and voiceId required' }, { status: 400 });
     }
 
-    console.log(`[TTS Single] Turn ${turnIndex}, voice: ${voiceId}, length: ${text.length}`);
+    console.log(`[TTS Single] Turn #${turnIndex ?? 'N/A'}, voice: ${voiceId}, length: ${text.length}`);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const config: any = {
@@ -124,13 +125,29 @@ export async function POST(request: NextRequest) {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[TTS Single] Turn ${turnIndex} complete in ${duration}ms`);
+    console.log(`[TTS Single] Turn #${turnIndex ?? 'N/A'} complete in ${duration}ms`);
 
     return NextResponse.json({ audioBase64, mimeType, turnIndex });
   } catch (error) {
     console.error('[TTS Single] Error:', error);
+    
+    // Check if it's a rate limit error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isRateLimit = errorMessage.includes('429') || 
+                        errorMessage.includes('quota') || 
+                        errorMessage.includes('rate') ||
+                        errorMessage.includes('RESOURCE_EXHAUSTED');
+    
+    if (isRateLimit) {
+      console.error('[TTS Single] Rate limit detected!');
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please wait before trying again.', rateLimited: true },
+        { status: 429 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'TTS failed', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'TTS failed', details: errorMessage },
       { status: 500 }
     );
   }

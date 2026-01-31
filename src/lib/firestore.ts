@@ -277,20 +277,40 @@ export async function deleteComment(commentId: string): Promise<void> {
  */
 export function subscribeToComments(
     roomId: string,
-    callback: (comments: Comment[]) => void
+    callback: (comments: Comment[]) => void,
+    onError?: (error: Error) => void
 ): () => void {
+    // Simple query without orderBy to avoid index requirement
+    // We'll sort client-side instead
     const q = query(
         collection(db, 'comments'),
-        where('roomId', '==', roomId),
-        orderBy('createdAt', 'asc')
+        where('roomId', '==', roomId)
     );
-    return onSnapshot(q, (snapshot) => {
-        const comments = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as Comment[];
-        callback(comments);
-    });
+    
+    return onSnapshot(
+        q, 
+        (snapshot) => {
+            const comments = snapshot.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+            })) as Comment[];
+            
+            // Sort by createdAt client-side
+            comments.sort((a, b) => {
+                const aTime = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
+                const bTime = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
+                return aTime - bTime;
+            });
+            
+            callback(comments);
+        },
+        (error) => {
+            console.error('[Firestore] Comments subscription error:', error);
+            // Call callback with empty array so loading stops
+            callback([]);
+            if (onError) onError(error);
+        }
+    );
 }
 
 // ============================================

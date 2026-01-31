@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
           roomId,
           turns,
           commentCount: comments.length,
-          comments: comments.map((c: Comment) => ({ user: c.username, text: c.text.slice(0, 50) + (c.text.length > 50 ? '...' : '') }))
+          hasBasePrompt: !!basePrompt,
+          basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : ''),
         });
       } else {
         console.log('[Generate API] Starting generation...', { 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
           turns, 
           isCommentAnalysis, 
           hasBasePrompt: !!basePrompt,
-          basePromptPreview: basePrompt ? basePrompt.slice(0, 100) + '...' : '(none)'
+          basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : '')
         });
       }
       
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest) {
     console.error('[Generate API] Error:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check for rate limiting
+    const isRateLimit = errorMessage.includes('429') || 
+                        errorMessage.includes('quota') || 
+                        errorMessage.includes('RESOURCE_EXHAUSTED');
+    
+    if (isRateLimit) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', rateLimited: true },
+        { status: 429 }
+      );
+    }
     
     return NextResponse.json(
       { 

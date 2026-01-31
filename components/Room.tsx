@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  useRemoteParticipants,
   useTracks,
-  useParticipants,
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, RoomEvent } from 'livekit-client';
 import '@livekit/components-styles';
 import Comments from './Comments';
 import ParticipantList from './ParticipantList';
@@ -24,16 +24,12 @@ export default function Room({ roomName, username, token, livekitUrl, userId }: 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const handleBatchReady = useCallback(() => {
-    console.log('[Room] Comment batch ready');
-  }, []);
-
   return (
     <LiveKitRoom
       token={token}
       serverUrl={livekitUrl}
       connect={true}
-      audio={false}
+      audio={false}  // Listeners don't publish audio
       video={false}
       onConnected={() => setIsConnected(true)}
       onDisconnected={() => setIsConnected(false)}
@@ -45,9 +41,8 @@ export default function Room({ roomName, username, token, livekitUrl, userId }: 
         userId={userId}
         isConnected={isConnected}
         connectionError={connectionError}
-        onBatchReady={handleBatchReady}
       />
-      {/* This renders audio from all published tracks */}
+      {/* This renders audio from ALL tracks in the room - the host's broadcast */}
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
@@ -59,32 +54,28 @@ interface RoomContentProps {
   userId: string;
   isConnected: boolean;
   connectionError: string | null;
-  onBatchReady: () => void;
 }
 
-function RoomContent({ 
-  roomName, 
-  username, 
-  userId, 
-  isConnected, 
-  connectionError,
-  onBatchReady 
-}: RoomContentProps) {
-  const [isBroadcastLive, setIsBroadcastLive] = useState(false);
-  
-  // Track audio streams from the host
-  const audioTracks = useTracks([Track.Source.Microphone]);
-  const participants = useParticipants();
+function RoomContent({ roomName, username, userId, isConnected, connectionError }: RoomContentProps) {
+  // Get audio tracks from the room (from host)
+  const audioTracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
+  const remoteParticipants = useRemoteParticipants();
   
   // Check if host is broadcasting
-  useEffect(() => {
-    const hostTrack = audioTracks.find(
-      track => track.participant.identity === 'teamcast-host'
-    );
-    setIsBroadcastLive(!!hostTrack);
-  }, [audioTracks]);
+  const hostTrack = audioTracks.find(track => 
+    track.participant.identity === 'teamcast-host' || 
+    track.publication?.trackName === 'podcast-audio'
+  );
+  
+  const isBroadcasting = audioTracks.length > 0;
+  const [showWaitingMessage, setShowWaitingMessage] = useState(true);
 
-  const listenerCount = participants.filter(p => p.identity !== 'teamcast-host').length;
+  // Hide waiting message after connection
+  useEffect(() => {
+    if (isBroadcasting) {
+      setShowWaitingMessage(false);
+    }
+  }, [isBroadcasting]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -124,28 +115,27 @@ function RoomContent({
           <div className="space-y-6">
             {/* Live badge & title */}
             <div className="space-y-4">
-              {isBroadcastLive ? (
+              {isBroadcasting ? (
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent-rose text-white text-sm font-bold tracking-wider rounded-full animate-glow">
                   <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
                   LIVE NOW
                 </div>
               ) : (
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-steel-800 text-steel-400 text-sm font-bold tracking-wider rounded-full">
-                  <span className="w-2 h-2 bg-steel-600 rounded-full" />
-                  WAITING FOR BROADCAST
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-steel-700 text-steel-300 text-sm font-bold tracking-wider rounded-full">
+                  <span className="w-2 h-2 bg-steel-500 rounded-full" />
+                  WAITING FOR HOST
                 </div>
               )}
               <h2 className="font-display text-4xl lg:text-5xl font-bold tracking-tight">
                 Super Bowl Pre-Game Analysis
               </h2>
               <p className="text-lg text-steel-400 max-w-xl">
-                {isBroadcastLive 
-                  ? 'Listen to Marcus & Jordan for expert analysis, predictions, and fan interactions.'
-                  : 'The broadcast hasn\'t started yet. Wait for the host to begin streaming.'}
+                Join Marcus & Jordan for expert analysis, predictions, and fan interactions 
+                leading up to the big game.
               </p>
             </div>
 
-            {/* Audio Visualizer / Status Card */}
+            {/* Audio Player Visual - Listener Mode */}
             <div className="card overflow-hidden">
               <div className="aspect-video bg-gradient-to-br from-steel-900 via-surface to-steel-800 flex items-center justify-center relative">
                 {/* Background pattern */}
@@ -155,8 +145,29 @@ function RoomContent({
                     backgroundSize: '32px 32px'
                   }} />
                 </div>
-                
-                {isBroadcastLive ? (
+
+                {!isConnected && (
+                  <div className="flex flex-col items-center gap-4 z-10">
+                    <div className="w-16 h-16 border-4 border-steel-700 border-t-accent rounded-full animate-spin" />
+                    <p className="text-xl font-display font-semibold text-steel-300">Connecting to room...</p>
+                  </div>
+                )}
+
+                {isConnected && !isBroadcasting && (
+                  <div className="flex flex-col items-center gap-4 z-10">
+                    <div className="text-6xl">📻</div>
+                    <p className="text-xl font-display font-semibold text-steel-300">Waiting for broadcast...</p>
+                    <p className="text-sm text-steel-500 text-center max-w-xs">
+                      The host hasn't started broadcasting yet. Please wait or check back later.
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                      <span className="text-sm text-amber-400">Listening for audio stream...</span>
+                    </div>
+                  </div>
+                )}
+
+                {isConnected && isBroadcasting && (
                   <div className="flex flex-col items-center gap-6 z-10">
                     {/* Audio visualization bars */}
                     <div className="flex items-end gap-1 h-16">
@@ -174,19 +185,13 @@ function RoomContent({
                     </div>
                     <div className="text-center">
                       <p className="text-2xl font-display font-bold text-white">🎧 Live Analysis</p>
-                      <p className="text-steel-400 mt-1">Listening to the broadcast</p>
-                      <p className="text-xs text-steel-600 mt-2">{listenerCount} listeners in room</p>
+                      <p className="text-steel-400 mt-1">
+                        Listening to the broadcast
+                      </p>
+                      <p className="text-xs text-steel-600 mt-2">
+                        {remoteParticipants.length} others listening
+                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-4 z-10 text-center">
-                    <span className="text-6xl opacity-50">📻</span>
-                    <p className="text-xl font-display font-semibold text-steel-400">
-                      Waiting for broadcast...
-                    </p>
-                    <p className="text-sm text-steel-600 max-w-xs">
-                      The host will start streaming soon. Stay tuned!
-                    </p>
                   </div>
                 )}
               </div>
@@ -217,7 +222,6 @@ function RoomContent({
                 roomId={roomName}
                 username={username}
                 userId={userId}
-                onBatchReady={onBatchReady}
               />
             </div>
             <ParticipantList />
