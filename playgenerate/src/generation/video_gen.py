@@ -1,8 +1,8 @@
 """
-Video Generator using Google Veo.
+Video Generator using Google Veo 3.1.
 
 Generates AI video clips from scene descriptions using the Veo API
-through Google AI Studio, Gemini API, or Vertex AI.
+through Google AI Studio.
 """
 
 import os
@@ -11,22 +11,15 @@ from typing import Optional
 from dataclasses import dataclass
 from pathlib import Path
 
-# Try to import google.generativeai for Veo
+# Try to import google.genai for Veo 3.1
 try:
-    import google.generativeai as genai
-    from google.generativeai import types
+    from google import genai
+    from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    print("Warning: google-generativeai not installed. Video generation unavailable.")
-
-# Try to import vertexai for enterprise access
-try:
-    from google.cloud import aiplatform
-    from vertexai.preview.vision_models import ImageGenerationModel
-    VERTEX_AVAILABLE = True
-except ImportError:
-    VERTEX_AVAILABLE = False
+    print("Warning: google-genai not installed. Video generation unavailable.")
+    print("Install with: pip install google-genai")
 
 
 @dataclass
@@ -46,77 +39,64 @@ class GeneratedVideo:
 class VideoConfig:
     """Configuration for video generation."""
     aspect_ratio: str = "16:9"  # or "9:16" for vertical
-    duration_seconds: float = 8.0  # Max 8 seconds for Veo
+    resolution: str = "720p"  # 720p or 1080p
     output_format: str = "mp4"
-    resolution: str = "1080p"
 
 
 class VideoGenerator:
-    """Generates tactical coaching film videos from scene descriptions using Veo."""
+    """Generates tactical coaching film videos from scene descriptions using Veo 3.1."""
     
-    # Veo prompt prefix for All-22 coaching film style
-    PROMPT_PREFIX = """NFL All-22 coaching film footage, elevated camera angle 40 yards above sideline, 
-professional broadcast quality showing all 22 players on field, clear player identification by position and jersey number, 
-visible yard lines and hash marks for reference, clean tactical view without graphics overlays, 
-realistic NFL stadium lighting, authentic player movements and formations, 
-"""
+    # Veo prompt prefix for All-22 coaching film style - optimized for GM/coach analysis
+    PROMPT_PREFIX = """NFL coaching film simulation, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
+players shown as distinct figures in team uniforms - offense on one side, defense on the other, 
+fixed overhead camera position with no movement or shake, clean tactical X's and O's style visualization, 
+professional sports broadcast quality, realistic player spacing and formation alignment, 
+smooth player movements showing routes, blocking assignments, and defensive coverage, """
     
     # Negative prompt to avoid issues that hurt tactical analysis
-    NEGATIVE_PROMPT = """cartoon, animated, low quality, blurry, ground-level angle, 
-dramatic close-ups, crowd focus, celebration shots, shaky camera, 
-artistic effects, slow motion unless specified, highlight reel style, 
-obstructed view, missing players, unrealistic formations"""
+    NEGATIVE_PROMPT = """ground level camera, sideline angle, close-up shots, player faces, crowd shots, 
+dramatic angles, shaky camera, handheld footage, cinematic effects, slow motion, 
+celebration shots, highlight reel style, lens flare, motion blur, 
+cartoon, animated, artistic, abstract, obstructed view, missing players, 
+first person view, helmet cam, end zone camera"""
     
     def __init__(
         self,
         api_key: Optional[str] = None,
         output_dir: str = "output/videos",
-        use_vertex: bool = False,
-        project_id: Optional[str] = None,
-        location: str = "us-central1"
     ):
         """
         Initialize the video generator.
         
         Args:
-            api_key: Google AI API key (for Gemini API access)
+            api_key: Google AI API key (uses GOOGLE_API_KEY env var if not provided)
             output_dir: Directory to save generated videos
-            use_vertex: Whether to use Vertex AI instead of Gemini API
-            project_id: GCP project ID (required for Vertex AI)
-            location: GCP location for Vertex AI
         """
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY")
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        self.use_vertex = use_vertex
-        self.project_id = project_id
-        self.location = location
-        
-        self.veo_model = None
-        self._initialize_model()
+        self.client = None
+        self._initialize_client()
     
-    def _initialize_model(self):
-        """Initialize the Veo model."""
-        if self.use_vertex and VERTEX_AVAILABLE:
-            try:
-                aiplatform.init(project=self.project_id, location=self.location)
-                # Note: Veo on Vertex AI uses a different API
-                print(f"Vertex AI initialized for project {self.project_id}")
-            except Exception as e:
-                print(f"Warning: Could not initialize Vertex AI: {e}")
-        
-        elif GENAI_AVAILABLE and self.api_key:
-            try:
-                genai.configure(api_key=self.api_key)
-                # Note: Veo model name may vary - check latest docs
-                # As of late 2025, Veo 2/3 available through Gemini API
-                self.veo_model = "veo-001"  # Placeholder - actual model name may differ
-                print(f"Gemini API configured for video generation")
-            except Exception as e:
-                print(f"Warning: Could not configure Gemini API: {e}")
-        else:
-            print("Warning: No video generation API available. Install google-generativeai or set up Vertex AI.")
+    def _initialize_client(self):
+        """Initialize the Veo client."""
+        if not GENAI_AVAILABLE:
+            print("Warning: google-genai not installed. Video generation unavailable.")
+            return
+            
+        if not self.api_key:
+            print("Warning: No GOOGLE_API_KEY set. Video generation unavailable.")
+            return
+            
+        try:
+            # Initialize the client with API key
+            self.client = genai.Client(api_key=self.api_key)
+            print("Veo 3.1 client initialized successfully")
+        except Exception as e:
+            print(f"Warning: Could not initialize Veo client: {e}")
+            self.client = None
     
     def _enhance_prompt(self, scene_description: str, style_hints: list[str] = None) -> str:
         """
@@ -138,7 +118,12 @@ obstructed view, missing players, unrealistic formations"""
         # Add the scene description
         prompt_parts.append(scene_description)
         
-        return "".join(prompt_parts)
+        # Combine and truncate to Veo's limit (1000 chars recommended)
+        full_prompt = "".join(prompt_parts)
+        if len(full_prompt) > 950:
+            full_prompt = full_prompt[:950] + "..."
+        
+        return full_prompt
     
     def generate_video(
         self,
@@ -149,7 +134,7 @@ obstructed view, missing players, unrealistic formations"""
         style_hints: list[str] = None
     ) -> GeneratedVideo:
         """
-        Generate a video from a scene description.
+        Generate a video from a scene description using Veo 3.1.
         
         Args:
             scene_description: Text description of the scene
@@ -171,8 +156,8 @@ obstructed view, missing players, unrealistic formations"""
         output_filename = f"play_{game_id}_{play_id}.{config.output_format}"
         output_path = self.output_dir / output_filename
         
-        # Check if API is available
-        if not GENAI_AVAILABLE and not VERTEX_AVAILABLE:
+        # Check if client is available
+        if not GENAI_AVAILABLE or not self.client:
             return GeneratedVideo(
                 play_id=play_id,
                 game_id=game_id,
@@ -181,32 +166,66 @@ obstructed view, missing players, unrealistic formations"""
                 prompt_used=enhanced_prompt,
                 generation_time_seconds=time.time() - start_time,
                 success=False,
-                error_message="No video generation API available. Install google-generativeai."
+                error_message="Veo client not initialized. Check GOOGLE_API_KEY and google-genai installation."
             )
         
         try:
-            if self.use_vertex and VERTEX_AVAILABLE:
-                # Vertex AI video generation
-                # Note: This is a simplified example - actual Veo API may differ
-                video_path = self._generate_with_vertex(enhanced_prompt, output_path, config)
-            elif GENAI_AVAILABLE and self.api_key:
-                # Gemini API video generation
-                video_path = self._generate_with_gemini(enhanced_prompt, output_path, config)
-            else:
-                raise RuntimeError("No video generation backend configured")
+            print(f"[Veo 3.1] Starting video generation for play {play_id}...")
+            print(f"  Prompt: {enhanced_prompt[:100]}...")
+            
+            # Start video generation with Veo 3.1
+            operation = self.client.models.generate_videos(
+                model="veo-3.1-fast-generate-preview",
+                prompt=enhanced_prompt,
+                config=types.GenerateVideosConfig(
+                    negative_prompt=self.NEGATIVE_PROMPT,
+                    aspect_ratio=config.aspect_ratio,
+                    resolution=config.resolution,
+                ),
+            )
+            
+            # Poll for completion
+            poll_count = 0
+            max_polls = 30  # Max 10 minutes (30 * 20s)
+            
+            while not operation.done:
+                poll_count += 1
+                elapsed = time.time() - start_time
+                print(f"  Waiting for video... ({elapsed:.0f}s elapsed, poll {poll_count})")
+                
+                if poll_count >= max_polls:
+                    raise TimeoutError("Video generation timed out after 10 minutes")
+                
+                time.sleep(20)
+                operation = self.client.operations.get(operation)
+            
+            # Check for errors in response
+            if not operation.response or not operation.response.generated_videos:
+                raise RuntimeError("No video generated in response")
+            
+            # Download and save the video
+            generated_video = operation.response.generated_videos[0]
+            self.client.files.download(file=generated_video.video)
+            generated_video.video.save(str(output_path))
+            
+            generation_time = time.time() - start_time
+            print(f"  Video saved to {output_path} ({generation_time:.1f}s)")
             
             return GeneratedVideo(
                 play_id=play_id,
                 game_id=game_id,
-                video_path=str(video_path) if video_path else None,
-                duration_seconds=config.duration_seconds,
+                video_path=str(output_path),
+                duration_seconds=8.0,  # Veo generates ~8s videos
                 prompt_used=enhanced_prompt,
-                generation_time_seconds=time.time() - start_time,
-                success=video_path is not None,
-                error_message=None if video_path else "Video generation returned no output"
+                generation_time_seconds=generation_time,
+                success=True,
+                error_message=None
             )
             
         except Exception as e:
+            error_msg = str(e)
+            print(f"  Error: {error_msg}")
+            
             return GeneratedVideo(
                 play_id=play_id,
                 game_id=game_id,
@@ -215,75 +234,8 @@ obstructed view, missing players, unrealistic formations"""
                 prompt_used=enhanced_prompt,
                 generation_time_seconds=time.time() - start_time,
                 success=False,
-                error_message=str(e)
+                error_message=error_msg
             )
-    
-    def _generate_with_gemini(
-        self,
-        prompt: str,
-        output_path: Path,
-        config: VideoConfig
-    ) -> Optional[Path]:
-        """
-        Generate video using Gemini API / Veo.
-        
-        Note: As of January 2026, the exact Veo API through Gemini may vary.
-        This implementation provides the structure - actual API calls should
-        be updated based on current documentation.
-        """
-        if not GENAI_AVAILABLE:
-            raise RuntimeError("google-generativeai not installed")
-        
-        # Note: This is a placeholder implementation
-        # The actual Veo API through Gemini may use different methods
-        # Check https://ai.google.dev/docs for current video generation API
-        
-        print(f"[Gemini/Veo] Would generate video with prompt:")
-        print(f"  {prompt[:200]}...")
-        print(f"  Output: {output_path}")
-        print(f"  Duration: {config.duration_seconds}s")
-        print(f"  Aspect: {config.aspect_ratio}")
-        
-        # Placeholder: In production, this would call the actual Veo API
-        # Example of what the API call might look like:
-        #
-        # response = genai.generate_video(
-        #     model="veo-2",
-        #     prompt=prompt,
-        #     config={
-        #         "duration_seconds": config.duration_seconds,
-        #         "aspect_ratio": config.aspect_ratio,
-        #     }
-        # )
-        # 
-        # with open(output_path, 'wb') as f:
-        #     f.write(response.video_bytes)
-        #
-        # return output_path
-        
-        # For now, return None to indicate placeholder mode
-        return None
-    
-    def _generate_with_vertex(
-        self,
-        prompt: str,
-        output_path: Path,
-        config: VideoConfig
-    ) -> Optional[Path]:
-        """
-        Generate video using Vertex AI.
-        
-        Note: Requires proper GCP setup and Veo API access through Vertex AI.
-        """
-        if not VERTEX_AVAILABLE:
-            raise RuntimeError("Vertex AI not configured")
-        
-        print(f"[Vertex AI/Veo] Would generate video with prompt:")
-        print(f"  {prompt[:200]}...")
-        print(f"  Output: {output_path}")
-        
-        # Placeholder: In production, this would call Vertex AI's Veo API
-        return None
     
     def generate_batch(
         self,
@@ -302,7 +254,9 @@ obstructed view, missing players, unrealistic formations"""
         """
         results = []
         
-        for scene in scenes:
+        for i, scene in enumerate(scenes):
+            print(f"\n[Batch] Generating video {i+1}/{len(scenes)}")
+            
             result = self.generate_video(
                 scene_description=scene['description'],
                 play_id=scene['play_id'],
@@ -312,9 +266,10 @@ obstructed view, missing players, unrealistic formations"""
             )
             results.append(result)
             
-            # Rate limiting - Veo API may have quotas
-            if result.success:
-                time.sleep(2)  # Brief pause between successful generations
+            # Rate limiting between generations
+            if result.success and i < len(scenes) - 1:
+                print("  Waiting 5s before next generation...")
+                time.sleep(5)
         
         return results
     
@@ -322,16 +277,18 @@ obstructed view, missing players, unrealistic formations"""
         """Get the status of the video generator."""
         return {
             "genai_available": GENAI_AVAILABLE,
-            "vertex_available": VERTEX_AVAILABLE,
+            "client_initialized": self.client is not None,
             "api_key_set": self.api_key is not None,
             "output_dir": str(self.output_dir),
-            "using_vertex": self.use_vertex,
-            "model": self.veo_model,
+            "model": "veo-3.1-fast-generate-preview",
         }
 
 
 # Example usage
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     # Create generator
     generator = VideoGenerator(output_dir="../../output/videos")
     
@@ -343,18 +300,16 @@ if __name__ == "__main__":
     
     # Test with sample scene - tactical coaching film style
     sample_scene = {
-        'description': '''All-22 coaching film view. Q1 14:25, 3&3 at the 32-yard line. 
+        'description': '''All-22 coaching film view. Q1 14:25, 3rd and 3 at the 32-yard line. 
         Pre-snap: Offense in 11 personnel (3 WR), defense shows Nickel with single-high safety.
         Post-snap: QB in shotgun, 5-step drop. Route concept: deep out/comeback combination 
         to the boundary side. X receiver runs 15-yard comeback, Z on deep over. Protection 
         slides left, RB checks backside rusher. Coverage rotates to Cover-3 post-snap.
         Ball released to X receiver on comeback - pass incomplete, CB in trail coverage 
-        with good leverage. Key teaching point: coverage disguise pre-snap vs post-snap rotation.
-        Camera: Elevated All-22 sideline view, 40 yards high, all players visible, 
-        yard lines and hash marks clear for reference.''',
+        with good leverage.''',
         'play_id': 101,
         'game_id': '2023090700',
-        'style_hints': ['professional broadcast quality', 'tactical clarity', 'clear route visualization', 'coverage indicators']
+        'style_hints': ['professional broadcast quality', 'tactical clarity']
     }
     
     print("\n\nTest video generation:")
