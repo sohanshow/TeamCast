@@ -99,6 +99,7 @@ interface QueuedAudio {
   buffer: AudioBuffer;
   speakerName: string;
   turnIndex: number;
+  text: string; // Store text for conversation history
 }
 
 function HostBroadcaster({ roomId }: { roomId: string }) {
@@ -116,6 +117,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   const mediaStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const turnsRef = useRef<PodcastTurn[]>([]);
   const audioQueueRef = useRef<QueuedAudio[]>([]);
+  const playedTurnsRef = useRef<PodcastTurn[]>([]); // Track last played turns for context
   const currentTurnIndexRef = useRef(0);
   const isPlayingRef = useRef(false);
   const isFetchingRef = useRef(false);
@@ -123,18 +125,28 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   const isBroadcastingRef = useRef(false);
   const lastCommentCheckRef = useRef(Date.now());
 
-  // Generate podcast script
+  // Generate podcast script with conversation history
   const generateScript = useCallback(async (isCommentAnalysis = false, comments: unknown[] = []) => {
     if (isGeneratingRef.current) return null;
     isGeneratingRef.current = true;
 
-    console.log('[Host] Generating new script...');
+    // Get last 3 played turns for context continuity
+    const recentTurns = playedTurnsRef.current.slice(-3);
+    const context = recentTurns.length > 0 
+      ? recentTurns.map(t => `${t.speakerName}: ${t.text}`).join('\n')
+      : undefined;
+
+    console.log('[Host] Generating new script...', { 
+      hasContext: !!context, 
+      contextTurns: recentTurns.length,
+      isCommentAnalysis 
+    });
 
     try {
       const res = await fetch('/api/podcast/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, turns: 4, isCommentAnalysis, comments }),
+        body: JSON.stringify({ roomId, turns: 4, isCommentAnalysis, comments, context }),
       });
 
       if (!res.ok) return null;
@@ -182,7 +194,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
         }
         const buffer = await audioContextRef.current.decodeAudioData(byteArray.buffer);
         console.log(`[Host] TTS ready for turn #${turnIndex}`);
-        return { buffer, speakerName: turn.speakerName, turnIndex };
+        return { buffer, speakerName: turn.speakerName, turnIndex, text: turn.text };
       }
     } catch (err) {
       console.error('[Host] TTS fetch error:', err);
@@ -258,6 +270,17 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       isPlayingRef.current = true;
       setTurnsPlayed(prev => prev + 1);
 
+      // Track this turn in played history for context (keep last 5)
+      playedTurnsRef.current.push({ 
+        speakerName: audio.speakerName, 
+        text: audio.text,
+        speaker: 'Speaker1',
+        voiceId: ''
+      });
+      if (playedTurnsRef.current.length > 5) {
+        playedTurnsRef.current.shift();
+      }
+
       await playAudioBuffer(audio.buffer);
       
       isPlayingRef.current = false;
@@ -278,7 +301,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   // Check for comments periodically - comments are PRIORITIZED
   const checkComments = useCallback(async () => {
     const now = Date.now();
-    if (now - lastCommentCheckRef.current < 15000) return; // Check every 15 seconds
+    if (now - lastCommentCheckRef.current < 2000) return; // Check every 2 seconds for immediate comment response
     if (isGeneratingRef.current) return; // Don't interrupt ongoing generation
     lastCommentCheckRef.current = now;
 
@@ -287,7 +310,14 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       if (res.ok) {
         const data = await res.json();
         if (data.pendingCommentBatch && data.pendingCommentBatch.comments?.length > 0) {
-          console.log('[Host] 🎤 PRIORITIZING comment batch - generating immediately');
+          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - PRIORITIZING`);
+          
+          // Mark comments as processed FIRST to prevent duplicate processing
+          await fetch('/api/room/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId }),
+          });
           
           // Generate comment analysis script
           const script = await generateScript(true, data.pendingCommentBatch.comments);
@@ -319,14 +349,14 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
     }
   }, [roomId, generateScript]);
 
-  // Background tasks interval
+  // Background tasks interval - check frequently for responsive comment handling
   useEffect(() => {
     if (status === 'idle' || status === 'starting') return;
     
     const interval = setInterval(() => {
       prefetchTTS();
       checkComments();
-    }, 3000);
+    }, 2000); // Check every 2 seconds for faster comment response
 
     return () => clearInterval(interval);
   }, [status, prefetchTTS, checkComments]);

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { roomId, turns = 3, isCommentAnalysis = false, comments = [] } = body;
+    const { roomId, turns = 3, isCommentAnalysis = false, comments = [], context } = body;
 
     if (!roomId) {
       console.log('[Generate API] No roomId');
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
           roomId,
           turns,
           commentCount: comments.length,
+          hasContext: !!context,
           hasBasePrompt: !!basePrompt,
           basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : ''),
         });
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
           roomId, 
           turns, 
           isCommentAnalysis, 
+          hasContext: !!context,
           hasBasePrompt: !!basePrompt,
           basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : '')
         });
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
       
       const script = await generatePodcastScript(
         turns,
-        undefined,
+        context, // Pass conversation history context
         isCommentAnalysis,
         comments as Comment[],
         basePrompt

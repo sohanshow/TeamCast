@@ -164,6 +164,21 @@ export async function upsertRoom(
 }
 
 /**
+ * Update last comment processed timestamp for a room
+ */
+export async function updateRoomLastCommentProcessed(roomId: string): Promise<void> {
+    const firestore = getDb();
+    const existingRoom = await getRoomByRoomId(roomId);
+    if (!existingRoom) return;
+    
+    const docRef = doc(firestore, 'rooms', existingRoom.id);
+    await updateDoc(docRef, {
+        lastCommentProcessedAt: Date.now(),
+        updatedAt: serverTimestamp(),
+    });
+}
+
+/**
  * Delete a room and all its related data (comments, participants)
  */
 export async function deleteRoomWithData(roomId: string): Promise<void> {
@@ -208,16 +223,25 @@ export async function deleteRoomWithData(roomId: string): Promise<void> {
  */
 export async function getComments(roomId: string): Promise<Comment[]> {
     const firestore = getDb();
+    // Simple query without orderBy to avoid index requirement
     const q = query(
         collection(firestore, 'comments'),
-        where('roomId', '==', roomId),
-        orderBy('createdAt', 'asc')
+        where('roomId', '==', roomId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({
+    const comments = snapshot.docs.map((d) => ({
         id: d.id,
         ...d.data(),
     })) as Comment[];
+    
+    // Sort client-side by createdAt or timestamp
+    comments.sort((a, b) => {
+        const aTime = a.timestamp || (a.createdAt?.toMillis?.() ?? 0);
+        const bTime = b.timestamp || (b.createdAt?.toMillis?.() ?? 0);
+        return aTime - bTime;
+    });
+    
+    return comments;
 }
 
 /**
@@ -240,18 +264,27 @@ export async function addComment(
 /**
  * Get recent comments (for batch processing)
  */
-export async function getRecentComments(roomId: string, limit: number = 20): Promise<Comment[]> {
+export async function getRecentComments(roomId: string, limitCount: number = 20): Promise<Comment[]> {
     const firestore = getDb();
+    // Simple query without orderBy to avoid index requirement
     const q = query(
         collection(firestore, 'comments'),
-        where('roomId', '==', roomId),
-        orderBy('createdAt', 'desc')
+        where('roomId', '==', roomId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.slice(0, limit).map((d) => ({
+    const comments = snapshot.docs.map((d) => ({
         id: d.id,
         ...d.data(),
     })) as Comment[];
+    
+    // Sort client-side by createdAt descending (most recent first)
+    comments.sort((a, b) => {
+        const aTime = a.timestamp || (a.createdAt?.toMillis?.() ?? 0);
+        const bTime = b.timestamp || (b.createdAt?.toMillis?.() ?? 0);
+        return bTime - aTime;
+    });
+    
+    return comments.slice(0, limitCount);
 }
 
 // ============================================
