@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { roomId, turns = 3, isCommentAnalysis = false, comments = [] } = body;
+    const { roomId, turns = 3, isCommentAnalysis = false, comments = [], context } = body;
 
     if (!roomId) {
       console.log('[Generate API] No roomId');
@@ -37,26 +37,36 @@ export async function POST(request: NextRequest) {
       const roomConfig = await getRoomByRoomId(roomId);
       const basePrompt = roomConfig?.basePrompt || '';
       
+      // Log context preview for debugging
+      const contextPreview = context 
+        ? context.slice(0, 100) + (context.length > 100 ? '...' : '')
+        : '(none)';
+      
       if (isCommentAnalysis && comments.length > 0) {
         console.log('[Generate API] Comment Analysis Request:', {
           roomId,
           turns,
           commentCount: comments.length,
-          comments: comments.map((c: Comment) => ({ user: c.username, text: c.text.slice(0, 50) + (c.text.length > 50 ? '...' : '') }))
+          hasContext: !!context,
+          contextPreview,
+          hasBasePrompt: !!basePrompt,
+          basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : ''),
         });
       } else {
         console.log('[Generate API] Starting generation...', { 
           roomId, 
           turns, 
           isCommentAnalysis, 
+          hasContext: !!context,
+          contextPreview,
           hasBasePrompt: !!basePrompt,
-          basePromptPreview: basePrompt ? basePrompt.slice(0, 100) + '...' : '(none)'
+          basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : '')
         });
       }
       
       const script = await generatePodcastScript(
         turns,
-        undefined,
+        context, // Pass conversation history context
         isCommentAnalysis,
         comments as Comment[],
         basePrompt
@@ -76,6 +86,18 @@ export async function POST(request: NextRequest) {
     console.error('[Generate API] Error:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check for rate limiting
+    const isRateLimit = errorMessage.includes('429') || 
+                        errorMessage.includes('quota') || 
+                        errorMessage.includes('RESOURCE_EXHAUSTED');
+    
+    if (isRateLimit) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', rateLimited: true },
+        { status: 429 }
+      );
+    }
     
     return NextResponse.json(
       { 

@@ -59,18 +59,24 @@ export async function generatePodcastScript(
       .map((c) => `@${c.username}: "${c.text}"`)
       .join('\n');
 
+    // Include conversation context so hosts know what they were just discussing
+    const previousConversation = context 
+      ? `\nWHAT THE HOSTS WERE JUST DISCUSSING:\n${context}\n`
+      : '';
+
     prompt = `You are writing a podcast script for a live analysis show called "TeamCast". 
 Two hosts are discussing the topic and addressing audience comments.
 ${baseContext}
 Host 1: ${SPEAKERS.Speaker1.name} (${SPEAKERS.Speaker1.role}) - Analytical, data-driven, strategic insights
 Host 2: ${SPEAKERS.Speaker2.name} (${SPEAKERS.Speaker2.role}) - Energetic, fan-focused, emotional takes
-
+${previousConversation}
 AUDIENCE COMMENTS TO ADDRESS:
 ${commentsList}
 
+The hosts should naturally transition from their current discussion to address these comments.
+Start by acknowledging the comment(s) came in, mention the username(s), and respond to their points.
 Generate exactly ${turns} conversational exchanges between the hosts addressing these comments.
-Make it engaging, mention usernames when responding to their comments, and keep the analysis flowing naturally.
-Each exchange should feel natural and conversational.
+Make it engaging and keep the analysis flowing naturally.
 
 IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no explanation, just the JSON):
 [
@@ -80,13 +86,18 @@ IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no e
 
 Make it sound natural, engaging, and like a real sports podcast. Address the users by name when responding to their comments.`;
   } else {
+    // Build conversation context section
+    const conversationContext = context 
+      ? `\nWHAT THE HOSTS WERE JUST SAYING (continue from here, don't repeat):\n${context}\n\nContinue the conversation naturally from this point. Build on what was just said, transition to new angles or deeper analysis.`
+      : 'Start with an engaging intro to the show, then dive into analysis.';
+
     prompt = `You are writing a podcast script for a live analysis show called "TeamCast".
 Two hosts are providing analysis, predictions, and engaging discussion.
 ${baseContext}
 Host 1: ${SPEAKERS.Speaker1.name} (${SPEAKERS.Speaker1.role}) - Analytical, data-driven, discusses matchups, stats, and strategic insights
 Host 2: ${SPEAKERS.Speaker2.name} (${SPEAKERS.Speaker2.role}) - Energetic, fan-focused, brings emotional takes and fan perspectives
 
-${context ? `Previous context: ${context}\n\nContinue the discussion from where we left off.` : 'Start with an exciting intro to the show.'}
+${conversationContext}
 
 Generate exactly ${turns} conversational exchanges (${turns * 2} total speaker turns) between the hosts.
 Each exchange should flow naturally and cover different aspects of the topic.

@@ -175,6 +175,11 @@ TeamCast/
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes
 ```
+
+Script to delete everything from Firestore:
+```
+curl -X DELETE http://localhost:3000/api/admin/reset-firestore
+```
 5. Deploy to Vercel!
 
 ## Environment Variables

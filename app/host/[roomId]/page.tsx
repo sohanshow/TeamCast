@@ -95,35 +95,59 @@ export default function HostPage() {
   );
 }
 
+interface QueuedAudio {
+  buffer: AudioBuffer;
+  speakerName: string;
+  turnIndex: number;
+  text: string; // Store text for conversation history
+}
+
 function HostBroadcaster({ roomId }: { roomId: string }) {
   const { localParticipant } = useLocalParticipant();
   
-  const [status, setStatus] = useState<'idle' | 'starting' | 'broadcasting' | 'generating'>('idle');
+  const [status, setStatus] = useState<'idle' | 'starting' | 'broadcasting' | 'generating' | 'prefetching'>('idle');
   const [currentSpeaker, setCurrentSpeaker] = useState('');
   const [listenerCount, setListenerCount] = useState(0);
   const [batchNumber, setBatchNumber] = useState(0);
+  const [queueSize, setQueueSize] = useState(0);
+  const [turnsPlayed, setTurnsPlayed] = useState(0);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioTrackRef = useRef<LocalAudioTrack | null>(null);
   const mediaStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const turnsRef = useRef<PodcastTurn[]>([]);
+  const audioQueueRef = useRef<QueuedAudio[]>([]);
+  const playedTurnsRef = useRef<PodcastTurn[]>([]); // Track last played turns for context
   const currentTurnIndexRef = useRef(0);
   const isPlayingRef = useRef(false);
+  const isFetchingRef = useRef(false);
   const isGeneratingRef = useRef(false);
   const isBroadcastingRef = useRef(false);
+  const isProcessingCommentsRef = useRef(false); // Block prefetching during comment processing
   const lastCommentCheckRef = useRef(Date.now());
 
-  // Generate podcast script
+  // Generate podcast script with conversation history
   const generateScript = useCallback(async (isCommentAnalysis = false, comments: unknown[] = []) => {
     if (isGeneratingRef.current) return null;
     isGeneratingRef.current = true;
-    setStatus('generating');
+
+    // Get last 3 played turns for context continuity
+    const recentTurns = playedTurnsRef.current.slice(-3);
+    const context = recentTurns.length > 0 
+      ? recentTurns.map(t => `${t.speakerName}: ${t.text}`).join('\n')
+      : undefined;
+
+    console.log('[Host] Generating new script...', { 
+      hasContext: !!context, 
+      contextTurns: recentTurns.length,
+      isCommentAnalysis 
+    });
 
     try {
       const res = await fetch('/api/podcast/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, turns: 3, isCommentAnalysis, comments }),
+        body: JSON.stringify({ roomId, turns: 4, isCommentAnalysis, comments, context }),
       });
 
       if (!res.ok) return null;
@@ -131,6 +155,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       if (!data.script?.turns?.length) return null;
 
       setBatchNumber(prev => prev + 1);
+      console.log(`[Host] Generated ${data.script.turns.length} new turns`);
       return data.script as PodcastScript;
     } catch (err) {
       console.error('[Host] Script generation error:', err);
@@ -141,15 +166,25 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   }, [roomId]);
 
   // Fetch TTS and return audio buffer
-  const fetchTTSBuffer = async (turn: PodcastTurn): Promise<AudioBuffer | null> => {
+  const fetchTTSBuffer = async (turn: PodcastTurn, turnIndex: number): Promise<QueuedAudio | null> => {
     try {
+      console.log(`[Host] Fetching TTS for turn #${turnIndex}: ${turn.speakerName}`);
+      
       const res = await fetch('/api/podcast/tts/single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: turn.text, voiceId: turn.voiceId }),
+        body: JSON.stringify({ 
+          text: turn.text, 
+          voiceId: turn.voiceId,
+          turnIndex 
+        }),
       });
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.error(`[Host] TTS failed for turn #${turnIndex}`);
+        return null;
+      }
+      
       const data = await res.json();
       
       if (data.audioBase64 && audioContextRef.current) {
@@ -158,7 +193,9 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
         for (let i = 0; i < byteCharacters.length; i++) {
           byteArray[i] = byteCharacters.charCodeAt(i);
         }
-        return await audioContextRef.current.decodeAudioData(byteArray.buffer);
+        const buffer = await audioContextRef.current.decodeAudioData(byteArray.buffer);
+        console.log(`[Host] TTS ready for turn #${turnIndex}`);
+        return { buffer, speakerName: turn.speakerName, turnIndex, text: turn.text };
       }
     } catch (err) {
       console.error('[Host] TTS fetch error:', err);
@@ -182,64 +219,164 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
     });
   };
 
-  // Main broadcast loop
-  const broadcastLoop = useCallback(async () => {
+  // Prefetch TTS for upcoming turns
+  const prefetchTTS = useCallback(async () => {
+    // Don't prefetch if already fetching, not broadcasting, or processing comments
+    if (isFetchingRef.current || !isBroadcastingRef.current || isProcessingCommentsRef.current) return;
+    isFetchingRef.current = true;
+
+    try {
+      // Generate more script if needed (but not during comment processing)
+      const remainingTurns = turnsRef.current.length - currentTurnIndexRef.current;
+      if (remainingTurns <= 2 && !isGeneratingRef.current && !isProcessingCommentsRef.current) {
+        setStatus(isPlayingRef.current ? 'broadcasting' : 'generating');
+        const script = await generateScript();
+        if (script) {
+          turnsRef.current = [...turnsRef.current, ...script.turns];
+        }
+      }
+
+      // Prefetch audio for upcoming turns (keep queue at 3) - skip if processing comments
+      while (
+        audioQueueRef.current.length < 3 &&
+        currentTurnIndexRef.current < turnsRef.current.length &&
+        !isProcessingCommentsRef.current // Stop if comments started processing
+      ) {
+        const turn = turnsRef.current[currentTurnIndexRef.current];
+        const audio = await fetchTTSBuffer(turn, currentTurnIndexRef.current);
+        
+        if (audio && !isProcessingCommentsRef.current) {
+          audioQueueRef.current.push(audio);
+          setQueueSize(audioQueueRef.current.length);
+          currentTurnIndexRef.current++;
+        } else if (!isProcessingCommentsRef.current) {
+          // Skip failed TTS
+          currentTurnIndexRef.current++;
+        } else {
+          // Comments started, break out
+          break;
+        }
+      }
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [generateScript]);
+
+  // Play next audio from queue
+  const playNext = useCallback(async () => {
     if (!isBroadcastingRef.current) return;
 
-    // Generate more content if needed
-    if (currentTurnIndexRef.current >= turnsRef.current.length) {
-      const script = await generateScript();
-      if (script) {
-        turnsRef.current = [...turnsRef.current, ...script.turns];
-      } else {
-        // Wait and retry
-        setTimeout(broadcastLoop, 5000);
-        return;
-      }
-    }
-
-    // Play current turn
-    const turn = turnsRef.current[currentTurnIndexRef.current];
-    if (turn) {
-      setCurrentSpeaker(turn.speakerName);
+    if (audioQueueRef.current.length > 0) {
+      const audio = audioQueueRef.current.shift()!;
+      setQueueSize(audioQueueRef.current.length);
+      
+      console.log(`[Host] Playing turn #${audio.turnIndex}: ${audio.speakerName}`);
+      setCurrentSpeaker(audio.speakerName);
       setStatus('broadcasting');
       isPlayingRef.current = true;
+      setTurnsPlayed(prev => prev + 1);
 
-      const buffer = await fetchTTSBuffer(turn);
-      if (buffer) {
-        await playAudioBuffer(buffer);
+      // Track this turn in played history for context (keep last 5)
+      playedTurnsRef.current.push({ 
+        speakerName: audio.speakerName, 
+        text: audio.text,
+        speaker: 'Speaker1',
+        voiceId: ''
+      });
+      if (playedTurnsRef.current.length > 5) {
+        playedTurnsRef.current.shift();
       }
 
-      currentTurnIndexRef.current++;
+      await playAudioBuffer(audio.buffer);
+      
       isPlayingRef.current = false;
+      
+      // Start prefetching more while we have a gap
+      prefetchTTS();
+      
+      // Play next immediately
+      playNext();
+    } else {
+      // Queue empty, wait for prefetch
+      setStatus('prefetching');
+      console.log('[Host] Queue empty, waiting for prefetch...');
+      setTimeout(playNext, 500);
     }
+  }, [prefetchTTS]);
 
-    // Check for comments periodically
+  // Check for comments periodically - comments are PRIORITIZED
+  const checkComments = useCallback(async () => {
     const now = Date.now();
-    if (now - lastCommentCheckRef.current > 30000) {
-      lastCommentCheckRef.current = now;
-      try {
-        const res = await fetch(`/api/room/status?roomId=${roomId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.pendingCommentBatch) {
-            const script = await generateScript(true, data.pendingCommentBatch.comments);
-            if (script) {
-              // Insert comment analysis next
-              turnsRef.current.splice(currentTurnIndexRef.current, 0, ...script.turns);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Host] Comment check error:', err);
-      }
-    }
+    if (now - lastCommentCheckRef.current < 2000) return; // Check every 2 seconds for immediate comment response
+    if (isGeneratingRef.current || isProcessingCommentsRef.current) return; // Don't interrupt ongoing generation
+    lastCommentCheckRef.current = now;
 
-    // Continue loop
-    if (isBroadcastingRef.current) {
-      setTimeout(broadcastLoop, 100);
+    try {
+      const res = await fetch(`/api/room/status?roomId=${roomId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pendingCommentBatch && data.pendingCommentBatch.comments?.length > 0) {
+          // SET FLAG IMMEDIATELY to stop all prefetching
+          isProcessingCommentsRef.current = true;
+          
+          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - STOPPING PREFETCH & PRIORITIZING`);
+          
+          // CLEAR THE QUEUE IMMEDIATELY before anything else
+          const clearedCount = audioQueueRef.current.length;
+          audioQueueRef.current = [];
+          setQueueSize(0);
+          console.log(`[Host] 🗑️ Cleared ${clearedCount} queued tracks to make room for comments`);
+          
+          // Mark comments as processed to prevent duplicate processing
+          await fetch('/api/room/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId }),
+          });
+          
+          // Generate comment analysis script
+          const script = await generateScript(true, data.pendingCommentBatch.comments);
+          if (script && script.turns.length > 0) {
+            console.log(`[Host] Generated ${script.turns.length} comment response turns - fetching TTS...`);
+            
+            // Fetch TTS for comment turns
+            const commentAudios: QueuedAudio[] = [];
+            for (let i = 0; i < script.turns.length; i++) {
+              const turn = script.turns[i];
+              console.log(`[Host] Fetching priority TTS for comment turn ${i + 1}/${script.turns.length}`);
+              const audio = await fetchTTSBuffer(turn, -1 - i); // Negative index to indicate priority
+              if (audio) {
+                commentAudios.push(audio);
+                // Add to queue as we get each one for faster playback start
+                audioQueueRef.current.push(audio);
+                setQueueSize(audioQueueRef.current.length);
+              }
+            }
+            
+            console.log(`[Host] ✅ Added ${commentAudios.length} comment turns to queue - ready for immediate playback`);
+          }
+          
+          // UNSET FLAG to allow prefetching to resume
+          isProcessingCommentsRef.current = false;
+        }
+      }
+    } catch (err) {
+      console.error('[Host] Comment check error:', err);
+      isProcessingCommentsRef.current = false; // Make sure to unset on error
     }
-  }, [generateScript, roomId]);
+  }, [roomId, generateScript]);
+
+  // Background tasks interval - check frequently for responsive comment handling
+  useEffect(() => {
+    if (status === 'idle' || status === 'starting') return;
+    
+    const interval = setInterval(() => {
+      prefetchTTS();
+      checkComments();
+    }, 2000); // Check every 2 seconds for faster comment response
+
+    return () => clearInterval(interval);
+  }, [status, prefetchTTS, checkComments]);
 
   // Start broadcasting
   const startBroadcast = async () => {
@@ -272,9 +409,15 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       }
       turnsRef.current = script.turns;
 
-      // Start broadcast loop
+      // Start prefetching
       isBroadcastingRef.current = true;
-      broadcastLoop();
+      setStatus('prefetching');
+      
+      // Prefetch first few turns
+      await prefetchTTS();
+      
+      // Start playback
+      playNext();
     } catch (err) {
       console.error('[Host] Failed to start broadcast:', err);
       setStatus('idle');
@@ -296,15 +439,16 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       audioContextRef.current = null;
     }
 
+    audioQueueRef.current = [];
     setStatus('idle');
     setCurrentSpeaker('');
+    setQueueSize(0);
   };
 
-  // Track listener count
+  // Track listener count using remote participants
   const tracks = useTracks([Track.Source.Microphone]);
   useEffect(() => {
-    // Count remote participants
-    setListenerCount(tracks.length > 0 ? tracks.length - 1 : 0);
+    setListenerCount(Math.max(0, tracks.length - 1));
   }, [tracks]);
 
   return (
@@ -355,7 +499,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
             </div>
           )}
 
-          {(status === 'broadcasting' || status === 'generating') && (
+          {(status === 'broadcasting' || status === 'generating' || status === 'prefetching') && (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -364,6 +508,9 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
                     LIVE
                   </span>
                   <span className="text-gray-400">Batch #{batchNumber}</span>
+                  <span className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded">
+                    Queue: {queueSize}
+                  </span>
                 </div>
                 <button
                   onClick={stopBroadcast}
@@ -391,6 +538,12 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
                     <p className="text-2xl font-bold text-white">{currentSpeaker}</p>
                     <p className="text-gray-500 mt-2">Speaking now...</p>
                   </>
+                ) : status === 'prefetching' ? (
+                  <>
+                    <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-6" />
+                    <p className="text-xl font-semibold text-gray-300">Buffering audio...</p>
+                    <p className="text-sm text-gray-500 mt-2">Prefetching next segments</p>
+                  </>
                 ) : (
                   <>
                     <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mx-auto mb-6" />
@@ -399,18 +552,22 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-4 gap-4 text-center">
                 <div className="bg-white/5 rounded-xl p-4">
                   <p className="text-3xl font-bold text-orange-400">{listenerCount}</p>
                   <p className="text-sm text-gray-500">Listeners</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
                   <p className="text-3xl font-bold text-emerald-400">{batchNumber}</p>
-                  <p className="text-sm text-gray-500">Segments</p>
+                  <p className="text-sm text-gray-500">Batches</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-3xl font-bold text-blue-400">{currentTurnIndexRef.current}</p>
+                  <p className="text-3xl font-bold text-blue-400">{turnsPlayed}</p>
                   <p className="text-sm text-gray-500">Turns Played</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-3xl font-bold text-purple-400">{queueSize}</p>
+                  <p className="text-sm text-gray-500">In Queue</p>
                 </div>
               </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { subscribeToComments, Comment as FirestoreComment } from '@/src/lib/firestore';
+import { Timestamp } from 'firebase/firestore';
 
 interface Comment {
   id: string;
@@ -22,30 +23,48 @@ export default function Comments({ roomId, username, userId, onBatchReady }: Com
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Subscribe to real-time comments from Firestore
-  useEffect(() => {
-    const unsubscribe = subscribeToComments(roomId, (firestoreComments) => {
-      const formattedComments: Comment[] = firestoreComments.map((c: FirestoreComment) => ({
-        id: c.id,
-        username: c.username,
-        text: c.text,
-        timestamp: c.createdAt?.toMillis?.() || Date.now(),
-      }));
-      setComments(formattedComments);
-    });
-
-    return () => unsubscribe();
-  }, [roomId]);
-
   useEffect(() => {
     scrollToBottom();
   }, [comments]);
+
+  // Subscribe to real-time comments from Firestore
+  useEffect(() => {
+    console.log('[Comments] Subscribing to room:', roomId);
+    setIsLoading(true);
+    
+    const unsubscribe = subscribeToComments(
+      roomId, 
+      (firestoreComments: FirestoreComment[]) => {
+        console.log('[Comments] Received', firestoreComments.length, 'comments');
+        const formattedComments: Comment[] = firestoreComments.map((c) => ({
+          id: c.id,
+          username: c.username,
+          text: c.text,
+          timestamp: c.createdAt instanceof Timestamp 
+            ? c.createdAt.toMillis() 
+            : Date.now(),
+        }));
+        setComments(formattedComments);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('[Comments] Subscription error:', error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      console.log('[Comments] Unsubscribing from room:', roomId);
+      unsubscribe();
+    };
+  }, [roomId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +87,7 @@ export default function Comments({ roomId, username, userId, onBatchReady }: Com
       const data = await response.json();
 
       if (response.ok) {
-        // Comments will be updated via the Firestore subscription
+        // Don't manually add comment - real-time subscription will update
         setNewComment('');
         setPendingCount(data.stats?.pendingComments || 0);
 
@@ -109,7 +128,12 @@ export default function Comments({ roomId, username, userId, onBatchReady }: Com
 
       {/* Comments list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {comments.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-full text-center py-12">
+            <div className="w-8 h-8 border-2 border-steel-700 border-t-accent rounded-full animate-spin mb-4" />
+            <p className="text-steel-400 font-medium">Loading comments...</p>
+          </div>
+        ) : comments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <span className="text-4xl mb-4 opacity-50">💬</span>
             <p className="text-steel-400 font-medium">Be the first to comment!</p>
@@ -122,13 +146,10 @@ export default function Comments({ roomId, username, userId, onBatchReady }: Com
             <div
               key={comment.id}
               className="p-3 bg-surface-raised rounded-lg animate-slide-in"
-              style={{ animationDelay: `${Math.min(index, 10) * 0.02}s` }}
+              style={{ animationDelay: `${index * 0.05}s` }}
             >
               <div className="flex items-center justify-between mb-1.5">
-                <span className={`font-semibold text-sm ${comment.username === username ? 'text-accent-cyan' : 'text-accent'}`}>
-                  @{comment.username}
-                  {comment.username === username && <span className="ml-1 text-steel-600">(you)</span>}
-                </span>
+                <span className="font-semibold text-accent text-sm">@{comment.username}</span>
                 <span className="text-xs text-steel-600">{formatTime(comment.timestamp)}</span>
               </div>
               <p className="text-sm text-steel-200 leading-relaxed">{comment.text}</p>

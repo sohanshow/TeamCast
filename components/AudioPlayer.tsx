@@ -15,9 +15,11 @@ interface QueuedAudio {
 }
 
 export default function AudioPlayer({ roomId }: AudioPlayerProps) {
-  const [status, setStatus] = useState<'loading' | 'playing' | 'generating'>('loading');
+  const [status, setStatus] = useState<'loading' | 'playing' | 'generating' | 'rate_limited' | 'needs_interaction'>('loading');
   const [currentSpeaker, setCurrentSpeaker] = useState<string>('');
   const [batchNumber, setBatchNumber] = useState(1);
+  const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
+  const [queueSize, setQueueSize] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hasStarted = useRef(false);
@@ -29,6 +31,9 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
   const isGeneratingScriptRef = useRef(false);
   const commentQueueRef = useRef<PodcastTurn[]>([]);
   const lastCommentCheckRef = useRef(Date.now());
+  const consecutiveFailuresRef = useRef(0);
+  const isRateLimitedRef = useRef(false);
+  const autoplayBlockedRef = useRef(false);
 
   // Generate a new script batch
   const generateNewScript = useCallback(async (isCommentAnalysis = false, comments: unknown[] = []) => {
@@ -75,8 +80,8 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
     }
   }, [roomId, batchNumber]);
 
-  // Fetch TTS for a single turn
-  const fetchTurnAudio = async (turn: PodcastTurn, turnIndex: number): Promise<QueuedAudio | null> => {
+  // Fetch TTS for a single turn - returns { audio, rateLimited }
+  const fetchTurnAudio = async (turn: PodcastTurn, turnIndex: number): Promise<{ audio: QueuedAudio | null; rateLimited: boolean }> => {
     console.log(`[Audio] Fetching TTS for turn ${turnIndex}: "${turn.text.slice(0, 50)}..."`);
 
     try {
@@ -90,9 +95,24 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
         }),
       });
 
+      // Check for rate limiting
+      if (res.status === 429 || res.status === 500) {
+        const errorData = await res.json().catch(() => ({}));
+        const isRateLimit = res.status === 429 || 
+          (errorData.error && errorData.error.includes('429')) ||
+          (errorData.error && errorData.error.includes('quota'));
+        
+        if (isRateLimit) {
+          console.error(`[Audio] Rate limited! Stopping TTS requests.`);
+          return { audio: null, rateLimited: true };
+        }
+        console.error(`[Audio] TTS failed for turn ${turnIndex}`);
+        return { audio: null, rateLimited: false };
+      }
+
       if (!res.ok) {
         console.error(`[Audio] TTS failed for turn ${turnIndex}`);
-        return null;
+        return { audio: null, rateLimited: false };
       }
 
       const data = await res.json();
@@ -104,25 +124,71 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
         }
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: data.mimeType || 'audio/wav' });
+        consecutiveFailuresRef.current = 0; // Reset on success
         return { 
-          url: URL.createObjectURL(blob), 
-          speakerName: turn.speakerName,
-          turnIndex 
+          audio: { 
+            url: URL.createObjectURL(blob), 
+            speakerName: turn.speakerName,
+            turnIndex 
+          },
+          rateLimited: false
         };
       }
     } catch (err) {
       console.error(`[Audio] Error fetching turn ${turnIndex}:`, err);
     }
-    return null;
+    return { audio: null, rateLimited: false };
   };
 
   // Play next audio from queue
   const playNext = useCallback(async () => {
     if (!audioRef.current) return;
 
+    setQueueSize(audioQueueRef.current.length);
+
     if (audioQueueRef.current.length > 0) {
       const queuedAudio = audioQueueRef.current.shift()!;
-      console.log(`[Audio] Playing: ${queuedAudio.speakerName}`);
+      console.log(`[Audio] Playing: ${queuedAudio.speakerName}, queue remaining: ${audioQueueRef.current.length}`);
+      audioRef.current.src = queuedAudio.url;
+      isPlayingRef.current = true;
+      setStatus('playing');
+      setCurrentSpeaker(queuedAudio.speakerName);
+      setQueueSize(audioQueueRef.current.length);
+      
+      try {
+        await audioRef.current.play();
+        autoplayBlockedRef.current = false;
+      } catch (err: unknown) {
+        console.error('[Audio] Play failed:', err);
+        // Check if it's an autoplay block
+        if (err instanceof Error && err.name === 'NotAllowedError') {
+          console.log('[Audio] Autoplay blocked - need user interaction');
+          autoplayBlockedRef.current = true;
+          setStatus('needs_interaction');
+          // Put the audio back in the queue
+          audioQueueRef.current.unshift(queuedAudio);
+        } else {
+          isPlayingRef.current = false;
+          playNext();
+        }
+      }
+    } else {
+      isPlayingRef.current = false;
+      if (!isRateLimitedRef.current) {
+        setStatus('generating');
+      }
+      console.log('[Audio] Queue empty, generating more content...');
+    }
+  }, []);
+
+  // Handle user click to enable audio
+  const handleEnableAudio = useCallback(async () => {
+    if (!audioRef.current) return;
+    autoplayBlockedRef.current = false;
+    
+    // Try to play from the queue
+    if (audioQueueRef.current.length > 0) {
+      const queuedAudio = audioQueueRef.current.shift()!;
       audioRef.current.src = queuedAudio.url;
       isPlayingRef.current = true;
       setStatus('playing');
@@ -131,14 +197,11 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
       try {
         await audioRef.current.play();
       } catch (err) {
-        console.error('[Audio] Play failed:', err);
-        isPlayingRef.current = false;
-        playNext();
+        console.error('[Audio] Play failed even after user interaction:', err);
+        setStatus('generating');
       }
     } else {
-      isPlayingRef.current = false;
       setStatus('generating');
-      console.log('[Audio] Queue empty, generating more content...');
     }
   }, []);
 
@@ -157,6 +220,21 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
 
   // Main content generation and prefetch loop
   const prefetchAndGenerate = useCallback(async () => {
+    // Don't do anything if rate limited
+    if (isRateLimitedRef.current) {
+      const now = Date.now();
+      if (rateLimitedUntil && now < rateLimitedUntil) {
+        console.log(`[Audio] Rate limited, waiting ${Math.ceil((rateLimitedUntil - now) / 1000)}s...`);
+        return;
+      } else {
+        // Rate limit period expired, try again
+        console.log('[Audio] Rate limit period expired, retrying...');
+        isRateLimitedRef.current = false;
+        setRateLimitedUntil(null);
+        setStatus('generating');
+      }
+    }
+
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
@@ -180,29 +258,52 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
       // Prefetch audio for upcoming turns
       while (
         audioQueueRef.current.length < 3 && 
-        currentTurnIndexRef.current < turnsRef.current.length
+        currentTurnIndexRef.current < turnsRef.current.length &&
+        !isRateLimitedRef.current
       ) {
         const turn = turnsRef.current[currentTurnIndexRef.current];
-        const audioData = await fetchTurnAudio(turn, currentTurnIndexRef.current);
+        const { audio: audioData, rateLimited } = await fetchTurnAudio(turn, currentTurnIndexRef.current);
         
+        if (rateLimited) {
+          // Stop all requests for 60 seconds
+          console.log('[Audio] Rate limit detected! Pausing for 60 seconds.');
+          isRateLimitedRef.current = true;
+          const retryAt = Date.now() + 60000;
+          setRateLimitedUntil(retryAt);
+          setStatus('rate_limited');
+          break;
+        }
+
         if (audioData) {
           audioQueueRef.current.push(audioData);
           console.log(`[Audio] Queued turn ${currentTurnIndexRef.current}, queue size: ${audioQueueRef.current.length}`);
           currentTurnIndexRef.current++;
+          consecutiveFailuresRef.current = 0;
 
           // Start playing if not already
           if (!isPlayingRef.current && audioQueueRef.current.length > 0) {
             playNext();
           }
         } else {
-          // TTS failed, skip this turn
+          // TTS failed (not rate limited), skip this turn but track failures
+          consecutiveFailuresRef.current++;
           currentTurnIndexRef.current++;
+          
+          // If too many consecutive failures, slow down
+          if (consecutiveFailuresRef.current >= 3) {
+            console.log('[Audio] Too many consecutive failures, waiting 10 seconds...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            consecutiveFailuresRef.current = 0;
+          }
         }
+        
+        // Small delay between TTS requests to avoid hammering API
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     } finally {
       isFetchingRef.current = false;
     }
-  }, [generateNewScript, playNext, processCommentTurns]);
+  }, [generateNewScript, playNext, processCommentTurns, rateLimitedUntil]);
 
   // Check for comment batches to process
   const checkForComments = useCallback(async () => {
@@ -319,6 +420,7 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
           <div className="flex flex-col items-center gap-4 z-10">
             <div className="w-16 h-16 border-4 border-steel-700 border-t-accent rounded-full animate-spin" />
             <p className="text-xl font-display font-semibold text-steel-300">Podcast Loading...</p>
+            <p className="text-sm text-steel-500">Generating AI content, this may take 10-15 seconds</p>
           </div>
         )}
         
@@ -353,6 +455,37 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
             <div className="w-12 h-12 border-4 border-steel-700 border-t-accent-emerald rounded-full animate-spin" />
             <p className="text-xl font-display font-semibold text-steel-300">Generating More Content...</p>
             <p className="text-sm text-steel-500">The hosts are preparing their next segment</p>
+          </div>
+        )}
+        
+        {status === 'rate_limited' && (
+          <div className="flex flex-col items-center gap-4 z-10">
+            <div className="text-6xl">⏳</div>
+            <p className="text-xl font-display font-semibold text-amber-400">API Rate Limited</p>
+            <p className="text-sm text-steel-400">
+              Waiting {rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - Date.now()) / 1000)) : 60}s before retrying...
+            </p>
+            <p className="text-xs text-steel-600 mt-2">The AI service is temporarily unavailable</p>
+          </div>
+        )}
+        
+        {status === 'needs_interaction' && (
+          <div className="flex flex-col items-center gap-4 z-10">
+            <div className="text-6xl">🔊</div>
+            <p className="text-xl font-display font-semibold text-white">Click to Enable Audio</p>
+            <p className="text-sm text-steel-400 mb-2">
+              Browser requires user interaction to play audio
+            </p>
+            <button
+              onClick={handleEnableAudio}
+              className="px-6 py-3 bg-gradient-to-r from-accent to-accent-cyan text-white font-bold rounded-lg
+                       hover:shadow-glow transition-all transform hover:scale-105"
+            >
+              🎧 Start Listening
+            </button>
+            {queueSize > 0 && (
+              <p className="text-xs text-steel-600">{queueSize} audio clips ready to play</p>
+            )}
           </div>
         )}
       </div>
