@@ -37,12 +37,18 @@ export async function POST(request: NextRequest) {
       const roomConfig = await getRoomByRoomId(roomId);
       const basePrompt = roomConfig?.basePrompt || '';
       
+      // Log context preview for debugging
+      const contextPreview = context 
+        ? context.slice(0, 100) + (context.length > 100 ? '...' : '')
+        : '(none)';
+      
       if (isCommentAnalysis && comments.length > 0) {
         console.log('[Generate API] Comment Analysis Request:', {
           roomId,
           turns,
           commentCount: comments.length,
           hasContext: !!context,
+          contextPreview,
           hasBasePrompt: !!basePrompt,
           basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : ''),
         });
@@ -52,6 +58,7 @@ export async function POST(request: NextRequest) {
           turns, 
           isCommentAnalysis, 
           hasContext: !!context,
+          contextPreview,
           hasBasePrompt: !!basePrompt,
           basePromptPreview: basePrompt.slice(0, 50) + (basePrompt.length > 50 ? '...' : '')
         });

@@ -123,6 +123,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   const isFetchingRef = useRef(false);
   const isGeneratingRef = useRef(false);
   const isBroadcastingRef = useRef(false);
+  const isProcessingCommentsRef = useRef(false); // Block prefetching during comment processing
   const lastCommentCheckRef = useRef(Date.now());
 
   // Generate podcast script with conversation history
@@ -220,13 +221,14 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
 
   // Prefetch TTS for upcoming turns
   const prefetchTTS = useCallback(async () => {
-    if (isFetchingRef.current || !isBroadcastingRef.current) return;
+    // Don't prefetch if already fetching, not broadcasting, or processing comments
+    if (isFetchingRef.current || !isBroadcastingRef.current || isProcessingCommentsRef.current) return;
     isFetchingRef.current = true;
 
     try {
-      // Generate more script if needed
+      // Generate more script if needed (but not during comment processing)
       const remainingTurns = turnsRef.current.length - currentTurnIndexRef.current;
-      if (remainingTurns <= 2 && !isGeneratingRef.current) {
+      if (remainingTurns <= 2 && !isGeneratingRef.current && !isProcessingCommentsRef.current) {
         setStatus(isPlayingRef.current ? 'broadcasting' : 'generating');
         const script = await generateScript();
         if (script) {
@@ -234,21 +236,25 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
         }
       }
 
-      // Prefetch audio for upcoming turns (keep queue at 3)
+      // Prefetch audio for upcoming turns (keep queue at 3) - skip if processing comments
       while (
         audioQueueRef.current.length < 3 &&
-        currentTurnIndexRef.current < turnsRef.current.length
+        currentTurnIndexRef.current < turnsRef.current.length &&
+        !isProcessingCommentsRef.current // Stop if comments started processing
       ) {
         const turn = turnsRef.current[currentTurnIndexRef.current];
         const audio = await fetchTTSBuffer(turn, currentTurnIndexRef.current);
         
-        if (audio) {
+        if (audio && !isProcessingCommentsRef.current) {
           audioQueueRef.current.push(audio);
           setQueueSize(audioQueueRef.current.length);
           currentTurnIndexRef.current++;
-        } else {
+        } else if (!isProcessingCommentsRef.current) {
           // Skip failed TTS
           currentTurnIndexRef.current++;
+        } else {
+          // Comments started, break out
+          break;
         }
       }
     } finally {
@@ -302,7 +308,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   const checkComments = useCallback(async () => {
     const now = Date.now();
     if (now - lastCommentCheckRef.current < 2000) return; // Check every 2 seconds for immediate comment response
-    if (isGeneratingRef.current) return; // Don't interrupt ongoing generation
+    if (isGeneratingRef.current || isProcessingCommentsRef.current) return; // Don't interrupt ongoing generation
     lastCommentCheckRef.current = now;
 
     try {
@@ -310,9 +316,18 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       if (res.ok) {
         const data = await res.json();
         if (data.pendingCommentBatch && data.pendingCommentBatch.comments?.length > 0) {
-          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - PRIORITIZING`);
+          // SET FLAG IMMEDIATELY to stop all prefetching
+          isProcessingCommentsRef.current = true;
           
-          // Mark comments as processed FIRST to prevent duplicate processing
+          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - STOPPING PREFETCH & PRIORITIZING`);
+          
+          // CLEAR THE QUEUE IMMEDIATELY before anything else
+          const clearedCount = audioQueueRef.current.length;
+          audioQueueRef.current = [];
+          setQueueSize(0);
+          console.log(`[Host] 🗑️ Cleared ${clearedCount} queued tracks to make room for comments`);
+          
+          // Mark comments as processed to prevent duplicate processing
           await fetch('/api/room/status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -322,9 +337,9 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
           // Generate comment analysis script
           const script = await generateScript(true, data.pendingCommentBatch.comments);
           if (script && script.turns.length > 0) {
-            console.log(`[Host] Generated ${script.turns.length} comment response turns`);
+            console.log(`[Host] Generated ${script.turns.length} comment response turns - fetching TTS...`);
             
-            // Immediately fetch TTS for comment turns and insert at FRONT of queue
+            // Fetch TTS for comment turns
             const commentAudios: QueuedAudio[] = [];
             for (let i = 0; i < script.turns.length; i++) {
               const turn = script.turns[i];
@@ -332,20 +347,22 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
               const audio = await fetchTTSBuffer(turn, -1 - i); // Negative index to indicate priority
               if (audio) {
                 commentAudios.push(audio);
+                // Add to queue as we get each one for faster playback start
+                audioQueueRef.current.push(audio);
+                setQueueSize(audioQueueRef.current.length);
               }
             }
             
-            if (commentAudios.length > 0) {
-              // Insert comment audio at the FRONT of the queue
-              audioQueueRef.current = [...commentAudios, ...audioQueueRef.current];
-              setQueueSize(audioQueueRef.current.length);
-              console.log(`[Host] ✅ Inserted ${commentAudios.length} priority comment turns at front of queue`);
-            }
+            console.log(`[Host] ✅ Added ${commentAudios.length} comment turns to queue - ready for immediate playback`);
           }
+          
+          // UNSET FLAG to allow prefetching to resume
+          isProcessingCommentsRef.current = false;
         }
       }
     } catch (err) {
       console.error('[Host] Comment check error:', err);
+      isProcessingCommentsRef.current = false; // Make sure to unset on error
     }
   }, [roomId, generateScript]);
 
