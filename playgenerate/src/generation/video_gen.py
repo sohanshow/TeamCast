@@ -39,7 +39,7 @@ class GeneratedVideo:
 class VideoConfig:
     """Configuration for video generation."""
     aspect_ratio: str = "16:9"  # or "9:16" for vertical
-    resolution: str = "720p"  # 720p or 1080p
+    resolution: str = "1080p"  # 720p or 1080p (1080p for highest quality)
     output_format: str = "mp4"
 
 
@@ -47,19 +47,19 @@ class VideoGenerator:
     """Generates tactical coaching film videos from scene descriptions using Veo 3.1."""
     
     # Veo prompt prefix for All-22 coaching film style - optimized for GM/coach analysis
-    PROMPT_PREFIX = """NFL coaching film simulation, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+    PROMPT_PREFIX = """High quality football simulation, hyper-realistic physics and player movement, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
 showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
-players shown as distinct figures in team uniforms - offense on one side, defense on the other, 
+players shown as distinct figures in generic team uniforms (one dark team, one light team) without logos, 
 fixed overhead camera position with no movement or shake, clean tactical X's and O's style visualization, 
-professional sports broadcast quality, realistic player spacing and formation alignment, 
+realistic lighting, realistic player spacing and formation alignment, 
 smooth player movements showing routes, blocking assignments, and defensive coverage, """
     
     # Negative prompt to avoid issues that hurt tactical analysis
-    NEGATIVE_PROMPT = """ground level camera, sideline angle, close-up shots, player faces, crowd shots, 
+    NEGATIVE_PROMPT = """text, logos, watermarks, distorted bodies, low quality, glitchy, 
+ground level camera, sideline angle, close-up shots, player faces, crowd shots, 
 dramatic angles, shaky camera, handheld footage, cinematic effects, slow motion, 
 celebration shots, highlight reel style, lens flare, motion blur, 
-cartoon, animated, artistic, abstract, obstructed view, missing players, 
-first person view, helmet cam, end zone camera"""
+obstructed view, missing players, first person view, helmet cam, end zone camera"""
     
     def __init__(
         self,
@@ -173,7 +173,7 @@ first person view, helmet cam, end zone camera"""
             print(f"[Veo 3.1] Starting video generation for play {play_id}...")
             print(f"  Prompt: {enhanced_prompt[:100]}...")
             
-            # Start video generation with Veo 3.1
+            # Start video generation with Veo 3.1 (fast preview model)
             operation = self.client.models.generate_videos(
                 model="veo-3.1-fast-generate-preview",
                 prompt=enhanced_prompt,

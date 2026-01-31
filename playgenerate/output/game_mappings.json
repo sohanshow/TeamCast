@@ -8,5 +8,15 @@
     "away_team": "Detroit Lions",
     "away_team_abbrev": "DET",
     "stadium": "GEHA Field at Arrowhead Stadium"
+  },
+  "2024120805": {
+    "bdb_game_id": "2024120805",
+    "espn_game_id": "401671631",
+    "date": "20241208",
+    "home_team": "Pittsburgh Steelers",
+    "home_team_abbrev": "PIT",
+    "away_team": "Cleveland Browns",
+    "away_team_abbrev": "CLE",
+    "stadium": "Acrisure Stadium"
   }
 }

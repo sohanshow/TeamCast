@@ -12,13 +12,14 @@ from dataclasses import dataclass
 import pandas as pd
 import math
 
-# Try to import google.generativeai
+# Try to import google.genai (new package)
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
-    print("Warning: google-generativeai not installed. Scene generation will use templates only.")
+    GENAI_AVAILABLE = False
+    print("Warning: google-genai not installed. Scene generation will use templates only.")
 
 
 @dataclass
@@ -111,7 +112,7 @@ Generate a tactical scene description (80-120 words) for AI video generation tha
 
 The video must be useful for strategic analysis. Include:
 
-1. **Pre-snap read**: Offensive formation, defensive alignment, key personnel groupings
+1. **Pre-snap read**: Offensive formation, defensive alignment, key personnel groupings. DESCRIBE TEAMS GENERICALLY (e.g. "Dark Team", "Light Team") - do not use specific NFL team names or logos.
 2. **Post-snap keys**: Route concepts OR blocking scheme, defensive reaction/coverage shell
 3. **Execution details**: Specific route depths, protection slides, gap assignments
 4. **Result analysis**: Why the play succeeded/failed based on scheme vs execution
@@ -136,16 +137,15 @@ Scene description:'''
         """
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY")
         self.model_name = model_name
-        self.model = None
+        self.client = None
         
-        if GEMINI_AVAILABLE and self.api_key:
+        if GENAI_AVAILABLE and self.api_key:
             try:
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel(model_name)
-                print(f"Gemini model {model_name} initialized")
+                self.client = genai.Client(api_key=self.api_key)
+                print(f"Gemini model {model_name} initialized via google.genai")
             except Exception as e:
-                print(f"Warning: Could not initialize Gemini: {e}")
-                self.model = None
+                print(f"Warning: Could not initialize Gemini client: {e}")
+                self.client = None
     
     def analyze_formation(self, tracking_df: pd.DataFrame) -> dict:
         """
@@ -483,7 +483,7 @@ Scene description:'''
         yard_line = enriched_play.get('absolute_yard_line', enriched_play.get('yard_line', 50))
         
         # Generate description
-        if self.model:
+        if self.client:
             # Use Gemini for detailed tactical description
             prompt = self.PROMPT_TEMPLATE.format(
                 away_team=enriched_play.get('away_team', 'Away'),
@@ -500,7 +500,10 @@ Scene description:'''
             )
             
             try:
-                response = self.model.generate_content(prompt)
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                )
                 description = response.text.strip()
             except Exception as e:
                 print(f"Gemini error: {e}")
