@@ -7,10 +7,11 @@ import {
   useRemoteParticipants,
   useTracks,
 } from '@livekit/components-react';
-import { Track, RoomEvent } from 'livekit-client';
+import { Track } from 'livekit-client';
 import '@livekit/components-styles';
 import Comments from './Comments';
 import ParticipantList from './ParticipantList';
+import TeamAnalyticsPanel from './TeamAnalyticsPanel';
 
 interface RoomProps {
   roomName: string;
@@ -69,6 +70,12 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
   
   const isBroadcasting = audioTracks.length > 0;
   const [showWaitingMessage, setShowWaitingMessage] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  
+  // Determine team from room name (seahawks or patriots)
+  const team = roomName.toLowerCase().includes('seahawk') ? 'seahawks' 
+             : roomName.toLowerCase().includes('patriot') ? 'patriots' 
+             : null;
 
   // Hide waiting message after connection
   useEffect(() => {
@@ -93,6 +100,19 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
           <span className={`text-sm transition-colors ${isConnected ? 'text-accent-emerald' : 'text-steel-500'}`}>
             {isConnected ? '● Connected' : '○ Connecting...'}
           </span>
+          {team && (
+            <button
+              onClick={() => setShowAnalytics(!showAnalytics)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                showAnalytics 
+                  ? 'bg-accent text-white shadow-glow' 
+                  : 'bg-surface-elevated border border-border text-steel-300 hover:text-white hover:border-accent'
+              }`}
+            >
+              <span>📊</span>
+              {showAnalytics ? 'Hide Analytics' : 'Coach Analytics'}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center">
@@ -228,6 +248,15 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
           </div>
         </div>
       </main>
+
+      {/* Analytics Panel - Slides in from right */}
+      {team && (
+        <TeamAnalyticsPanel 
+          team={team} 
+          isOpen={showAnalytics} 
+          onClose={() => setShowAnalytics(false)} 
+        />
+      )}
     </div>
   );
 }
