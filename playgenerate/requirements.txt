@@ -1,0 +1,16 @@
+# NFL Play Video Generator Pipeline Dependencies
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# HTTP requests for ESPN API
+requests>=2.31.0
+
+# Google AI for Gemini and Veo 3.1
+google-genai>=1.0.0
+google-generativeai>=0.8.0  # Still needed for scene generation
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0

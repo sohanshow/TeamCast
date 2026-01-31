@@ -1,0 +1,26 @@
+game_id,play_id,absolute_yardline,play_direction,ball_land_x,ball_land_y,num_frames,quarter,game_clock,down,yards_to_go,play_description,play_type,scoring_play,home_team,away_team,stadium,home_score,away_score,match_confidence,scene_description,camera_angle,formation_offense,formation_defense
+2023090700,101,42,right,63.2599983215332,-0.219999998807907,21,1,14:29,2,3,J.Goff pass incomplete short right.,Pass Incompletion,False,Kansas City Chiefs,Detroit Lions,GEHA Field at Arrowhead Stadium,0,0,0.9,"[SCENE START]
+
+**All-22 elevated sideline view. First quarter, 14:29, second and three at the 50. Lions at Chiefs.**
+
+Pre-snap: Lions in a shotgun formation, likely 11 personnel. Chiefs show a nickel package, presenting a potential overload blitz look to Goff's left. Observe the linebackers' depth and potential blitz paths.
+
+Post-snap: Focus on the Lions' protection scheme; identify the center's call and the slide protection to the left. Track the routes: likely a quick slant to the right by the receiver, with a potential rub route underneath from the slot. Watch the safety rotation; is it a single-high or split-safety look?
+
+Goff takes a quick drop and attempts to hit the slant route. The Chiefs defender anticipates the throw and aggressively steps in front, disrupting the passing lane. The pass falls incomplete, short right.
+
+Analyze why the throw was unsuccessful: Was the defender's coverage scheme well-disguised, or did Goff misread the blitz look? Could a different route combination have created a better throwing window? Highlight the defender who made the pass breakup.
+
+[SCENE END]","All-22 elevated sideline view, showing route tree development and defensive coverage rotation",Unknown,Unknown
+2023090700,194,89,left,84.9400024414062,21.75,9,1,12:56,3,2,(Shotgun) P.Mahomes pass short left to J.McKinnon to KC 31 for 10 yards (M.Rodriguez).,Pass Reception,False,Kansas City Chiefs,Detroit Lions,GEHA Field at Arrowhead Stadium,0,0,0.7,"[SCENE START]
+
+All-22 view, Lions-Chiefs, Q1 12:56, 3rd & 2 at the 50. Pre-snap: Shotgun formation, likely 11 personnel for KC. Lions defense shows a balanced front; observe potential blitzers. Post-snap: Mahomes hits McKinnon on a quick left-side flat route. Focus on the offensive line's pass protection, a half-slide to the right, allowing Mahomes time. Note the linebackers' initial reads and pursuit angles. McKinnon secures the catch and gains 10 yards, converting the first down. Lions cornerback and LB fail to quickly close the space, allowing crucial YAC. The play's success hinges on quick release and McKinnon's ability to turn upfield immediately after the catch, exploiting the soft coverage.
+
+[SCENE END]","All-22 elevated sideline view, 40 yards high, full field width visible, tracking routes and coverage",Unknown,Unknown
+2023090700,219,79,left,75.8499984741211,11.4899997711182,8,1,12:20,1,10,(Shotgun) P.Mahomes pass short left to N.Gray to KC 36 for 5 yards (A.Anzalone).,Pass Reception,False,Kansas City Chiefs,Detroit Lions,GEHA Field at Arrowhead Stadium,0,0,0.7,"[SCENE START]
+
+**VISUAL:** All-22 elevated sideline view, 40 yards high, full field width visible. Clear view of all 22 players, field markings (yard lines, hash marks) visible. Professional NFL Films coaching tape aesthetic.
+
+**ACTION:** Pre-snap, the Chiefs align in a shotgun formation with a likely 11 personnel grouping. The Lions show a base 4-3 defensive front, potentially indicating a zone coverage. Post-snap, Mahomes takes a quick drop and throws a short pass to Gray, who runs a quick out route towards the left sideline. The blocking appears to be a standard slide protection to the right, giving Mahomes time for the quick throw. Anzalone quickly reads the play and fills the flat, making the tackle after a gain of 5 yards. The route combination seems designed to get the ball out quickly against a potential blitz. The play gains minimal yardage due to Anzalone's quick read and decisive tackle. Camera follows Gray as he moves towards the sideline.
+
+[SCENE END]","All-22 elevated sideline view, 40 yards high, full field width visible, tracking routes and coverage",Unknown,Unknown
