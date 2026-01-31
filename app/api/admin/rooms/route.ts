@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
-  upsertRoomConfig, 
-  getAllRoomConfigs, 
-  deleteRoomConfig,
-  getRoomConfig
-} from '@/lib/podcast-engine';
+  upsertRoom, 
+  getRooms, 
+  deleteRoomWithData,
+  getRoomByRoomId
+} from '@/lib/firestore-server';
 import { RoomServiceClient } from 'livekit-server-sdk';
 
 // Initialize LiveKit Room Service
@@ -34,10 +34,10 @@ export async function GET() {
       
       // Auto-register any LiveKit rooms that don't have configs yet
       for (const lkRoom of livekitRooms) {
-        const existingConfig = getRoomConfig(lkRoom.name);
+        const existingConfig = await getRoomByRoomId(lkRoom.name);
         if (!existingConfig) {
           console.log(`[Admin] Auto-registering LiveKit room: ${lkRoom.name}`);
-          upsertRoomConfig({
+          await upsertRoom({
             roomId: lkRoom.name,
             name: lkRoom.name,
             basePrompt: '',
@@ -49,16 +49,20 @@ export async function GET() {
       console.warn('[Admin] Could not fetch LiveKit rooms:', err);
     }
 
-    // Get all configs (including newly auto-registered ones)
-    const configs = getAllRoomConfigs();
+    // Get all rooms from Firestore
+    const rooms = await getRooms();
 
-    // Merge configs with LiveKit room data
-    const roomsWithStatus = configs.map(config => {
-      const livekitRoom = livekitRooms.find(r => r.name === config.roomId);
+    // Merge with LiveKit room data
+    const roomsWithStatus = rooms.map(room => {
+      const livekitRoom = livekitRooms.find(r => r.name === room.roomId);
       return {
-        ...config,
+        roomId: room.roomId,
+        name: room.name,
+        basePrompt: room.basePrompt,
+        isActive: room.isActive,
+        createdAt: room.createdAt?.toMillis?.() || Date.now(),
         livekitActive: !!livekitRoom,
-        participants: livekitRoom?.numParticipants || 0,
+        participants: livekitRoom?.numParticipants || room.listenerCount || 0,
       };
     });
 
@@ -85,8 +89,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create/update room config
-    const config = upsertRoomConfig({
+    // Create/update room in Firestore
+    const room = await upsertRoom({
       roomId,
       name: name || roomId,
       basePrompt: basePrompt || '',
@@ -109,7 +113,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      room: config 
+      room: {
+        roomId: room.roomId,
+        name: room.name,
+        basePrompt: room.basePrompt,
+        isActive: room.isActive,
+        createdAt: Date.now(),
+      }
     });
   } catch (error) {
     console.error('[Admin] Error creating room:', error);
@@ -120,7 +130,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a room
+// DELETE - Delete a room and all related data
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -133,9 +143,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Check if room exists
-    const config = getRoomConfig(roomId);
-    if (!config) {
+    // Check if room exists in Firestore
+    const room = await getRoomByRoomId(roomId);
+    if (!room) {
       return NextResponse.json(
         { error: 'Room not found' },
         { status: 404 }
@@ -151,12 +161,13 @@ export async function DELETE(request: NextRequest) {
       console.warn(`[Admin] Could not delete LiveKit room: ${roomId}`, err);
     }
 
-    // Delete config
-    deleteRoomConfig(roomId);
+    // Delete room and all related data (comments, participants) from Firestore
+    await deleteRoomWithData(roomId);
+    console.log(`[Admin] Deleted Firestore room and related data: ${roomId}`);
 
     return NextResponse.json({ 
       success: true, 
-      message: `Room ${roomId} deleted` 
+      message: `Room ${roomId} and all related data deleted` 
     });
   } catch (error) {
     console.error('[Admin] Error deleting room:', error);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generatePodcastScript } from '@/lib/gemini';
 import { Comment } from '@/lib/types';
-import { getRoomConfig } from '@/lib/podcast-engine';
+import { getRoomByRoomId } from '@/lib/firestore-server';
 
 // Simple in-memory lock to prevent concurrent generation per room
 const generatingRooms = new Set<string>();
@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
     generatingRooms.add(roomId);
 
     try {
-      // Get room config for base prompt
-      const roomConfig = getRoomConfig(roomId);
+      // Get room config from Firestore for base prompt
+      const roomConfig = await getRoomByRoomId(roomId);
       const basePrompt = roomConfig?.basePrompt || '';
       
       if (isCommentAnalysis && comments.length > 0) {
@@ -45,7 +45,13 @@ export async function POST(request: NextRequest) {
           comments: comments.map((c: Comment) => ({ user: c.username, text: c.text.slice(0, 50) + (c.text.length > 50 ? '...' : '') }))
         });
       } else {
-        console.log('[Generate API] Starting generation...', { roomId, turns, isCommentAnalysis, hasBasePrompt: !!basePrompt });
+        console.log('[Generate API] Starting generation...', { 
+          roomId, 
+          turns, 
+          isCommentAnalysis, 
+          hasBasePrompt: !!basePrompt,
+          basePromptPreview: basePrompt ? basePrompt.slice(0, 100) + '...' : '(none)'
+        });
       }
       
       const script = await generatePodcastScript(
