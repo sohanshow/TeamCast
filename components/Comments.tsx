@@ -13,7 +13,7 @@ interface CommentsProps {
   roomId: string;
   username: string;
   userId: string;
-  onBatchReady?: (comments: Comment[]) => void;
+  onBatchReady?: () => void;
 }
 
 export default function Comments({ roomId, username, userId, onBatchReady }: CommentsProps) {
@@ -56,8 +56,8 @@ export default function Comments({ roomId, username, userId, onBatchReady }: Com
         setNewComment('');
         setPendingCount(data.stats.pendingComments);
 
-        if (data.shouldProcessBatch && data.batch && onBatchReady) {
-          onBatchReady(data.batch.comments);
+        if (data.shouldProcessBatch && onBatchReady) {
+          onBatchReady();
         }
       }
     } catch (error) {

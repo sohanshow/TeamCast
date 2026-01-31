@@ -9,7 +9,6 @@ import '@livekit/components-styles';
 import AudioPlayer from './AudioPlayer';
 import Comments from './Comments';
 import ParticipantList from './ParticipantList';
-import { Comment } from '@/lib/types';
 
 interface RoomProps {
   roomName: string;
@@ -23,17 +22,11 @@ export default function Room({ roomName, username, token, livekitUrl, userId }: 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const handleBatchReady = useCallback(async (comments: Comment[]) => {
-    try {
-      await fetch('/api/comments/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: roomName, comments }),
-      });
-    } catch (error) {
-      console.error('Failed to process comment batch:', error);
-    }
-  }, [roomName]);
+  // Comment batches are now handled by AudioPlayer polling the room status endpoint
+  // This callback just logs when a batch is ready for debugging
+  const handleBatchReady = useCallback(() => {
+    console.log('[Room] Comment batch ready - AudioPlayer will pick it up via polling');
+  }, []);
 
 
   return (

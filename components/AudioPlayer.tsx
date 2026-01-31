@@ -1,31 +1,82 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { PodcastScript } from '@/lib/types';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { PodcastScript, PodcastTurn } from '@/lib/types';
 
 interface AudioPlayerProps {
   roomId: string;
 }
 
+interface QueuedAudio {
+  url: string;
+  speakerName: string;
+  turnIndex: number;
+  isCommentAnalysis?: boolean;
+}
+
 export default function AudioPlayer({ roomId }: AudioPlayerProps) {
-  const [status, setStatus] = useState<'loading' | 'playing' | 'ended'>('loading');
+  const [status, setStatus] = useState<'loading' | 'playing' | 'generating'>('loading');
   const [currentSpeaker, setCurrentSpeaker] = useState<string>('');
+  const [batchNumber, setBatchNumber] = useState(1);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hasStarted = useRef(false);
-  const currentTurnRef = useRef(0);
-  const scriptRef = useRef<PodcastScript | null>(null);
-  const audioQueueRef = useRef<{ url: string; speakerName: string }[]>([]);
+  const turnsRef = useRef<PodcastTurn[]>([]);
+  const currentTurnIndexRef = useRef(0);
+  const audioQueueRef = useRef<QueuedAudio[]>([]);
   const isPlayingRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const isGeneratingScriptRef = useRef(false);
+  const commentQueueRef = useRef<PodcastTurn[]>([]);
+  const lastCommentCheckRef = useRef(Date.now());
 
-  // Fetch TTS for a single turn
-  const fetchTurnAudio = async (turnIndex: number): Promise<{ url: string; speakerName: string } | null> => {
-    if (!scriptRef.current || turnIndex >= scriptRef.current.turns.length) {
+  // Generate a new script batch
+  const generateNewScript = useCallback(async (isCommentAnalysis = false, comments: unknown[] = []) => {
+    if (isGeneratingScriptRef.current) {
+      console.log('[Audio] Script generation already in progress');
       return null;
     }
 
-    const turn = scriptRef.current.turns[turnIndex];
+    isGeneratingScriptRef.current = true;
+    setStatus('generating');
+    console.log(`[Audio] Generating new script batch #${batchNumber + 1}...`);
+
+    try {
+      const scriptRes = await fetch('/api/podcast/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          roomId, 
+          turns: 3,
+          isCommentAnalysis,
+          comments 
+        }),
+      });
+
+      if (!scriptRes.ok) {
+        console.error('[Audio] Script generation failed');
+        return null;
+      }
+
+      const scriptData = await scriptRes.json();
+      if (!scriptData.script?.turns?.length) {
+        console.error('[Audio] No script returned');
+        return null;
+      }
+
+      setBatchNumber(prev => prev + 1);
+      console.log(`[Audio] New script ready: ${scriptData.script.turns.length} turns`);
+      return scriptData.script as PodcastScript;
+    } catch (err) {
+      console.error('[Audio] Script generation error:', err);
+      return null;
+    } finally {
+      isGeneratingScriptRef.current = false;
+    }
+  }, [roomId, batchNumber]);
+
+  // Fetch TTS for a single turn
+  const fetchTurnAudio = async (turn: PodcastTurn, turnIndex: number): Promise<QueuedAudio | null> => {
     console.log(`[Audio] Fetching TTS for turn ${turnIndex}: "${turn.text.slice(0, 50)}..."`);
 
     try {
@@ -53,7 +104,11 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
         }
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: data.mimeType || 'audio/wav' });
-        return { url: URL.createObjectURL(blob), speakerName: turn.speakerName };
+        return { 
+          url: URL.createObjectURL(blob), 
+          speakerName: turn.speakerName,
+          turnIndex 
+        };
       }
     } catch (err) {
       console.error(`[Audio] Error fetching turn ${turnIndex}:`, err);
@@ -62,102 +117,163 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
   };
 
   // Play next audio from queue
-  const playNext = async () => {
+  const playNext = useCallback(async () => {
     if (!audioRef.current) return;
 
     if (audioQueueRef.current.length > 0) {
-      const { url, speakerName } = audioQueueRef.current.shift()!;
-      console.log(`[Audio] Playing: ${speakerName}`);
-      audioRef.current.src = url;
+      const queuedAudio = audioQueueRef.current.shift()!;
+      console.log(`[Audio] Playing: ${queuedAudio.speakerName}`);
+      audioRef.current.src = queuedAudio.url;
       isPlayingRef.current = true;
       setStatus('playing');
-      setCurrentSpeaker(speakerName);
+      setCurrentSpeaker(queuedAudio.speakerName);
       
       try {
         await audioRef.current.play();
       } catch (err) {
         console.error('[Audio] Play failed:', err);
+        isPlayingRef.current = false;
         playNext();
       }
     } else {
       isPlayingRef.current = false;
-      console.log('[Audio] Queue empty, waiting...');
+      setStatus('generating');
+      console.log('[Audio] Queue empty, generating more content...');
     }
-  };
+  }, []);
 
-  // Pre-fetch upcoming turns
-  const prefetchTurns = async () => {
+  // Process comment turns if any
+  const processCommentTurns = useCallback(async () => {
+    if (commentQueueRef.current.length === 0) return;
+    
+    console.log(`[Audio] Processing ${commentQueueRef.current.length} comment analysis turns`);
+    const turns = [...commentQueueRef.current];
+    commentQueueRef.current = [];
+    
+    // Add comment turns to the main turns queue (prioritize them)
+    turnsRef.current = [...turns, ...turnsRef.current.slice(currentTurnIndexRef.current)];
+    currentTurnIndexRef.current = 0;
+  }, []);
+
+  // Main content generation and prefetch loop
+  const prefetchAndGenerate = useCallback(async () => {
     if (isFetchingRef.current) return;
-    if (!scriptRef.current) return;
+    isFetchingRef.current = true;
 
-    const script = scriptRef.current;
-    const currentTurn = currentTurnRef.current;
+    try {
+      // Process any pending comment turns first
+      await processCommentTurns();
 
-    // Check if we've finished all turns
-    if (currentTurn >= script.turns.length && audioQueueRef.current.length === 0 && !isPlayingRef.current) {
-      setStatus('ended');
-      return;
-    }
-
-    for (let i = currentTurn; i < Math.min(currentTurn + 2, script.turns.length); i++) {
-      if (audioQueueRef.current.length >= 2) break;
-
-      isFetchingRef.current = true;
-      const audioData = await fetchTurnAudio(i);
-      isFetchingRef.current = false;
-
-      if (audioData) {
-        audioQueueRef.current.push(audioData);
-        currentTurnRef.current = i + 1;
-        console.log(`[Audio] Queued turn ${i}, queue size: ${audioQueueRef.current.length}`);
-
-        if (!isPlayingRef.current) {
-          playNext();
+      // Check if we need more turns
+      const remainingTurns = turnsRef.current.length - currentTurnIndexRef.current;
+      
+      // If we're running low on turns, generate more
+      if (remainingTurns <= 2 && !isGeneratingScriptRef.current) {
+        console.log(`[Audio] Low on turns (${remainingTurns} remaining), generating more...`);
+        const newScript = await generateNewScript();
+        if (newScript) {
+          turnsRef.current = [...turnsRef.current, ...newScript.turns];
+          console.log(`[Audio] Added ${newScript.turns.length} new turns. Total: ${turnsRef.current.length}`);
         }
       }
-    }
-  };
 
+      // Prefetch audio for upcoming turns
+      while (
+        audioQueueRef.current.length < 3 && 
+        currentTurnIndexRef.current < turnsRef.current.length
+      ) {
+        const turn = turnsRef.current[currentTurnIndexRef.current];
+        const audioData = await fetchTurnAudio(turn, currentTurnIndexRef.current);
+        
+        if (audioData) {
+          audioQueueRef.current.push(audioData);
+          console.log(`[Audio] Queued turn ${currentTurnIndexRef.current}, queue size: ${audioQueueRef.current.length}`);
+          currentTurnIndexRef.current++;
+
+          // Start playing if not already
+          if (!isPlayingRef.current && audioQueueRef.current.length > 0) {
+            playNext();
+          }
+        } else {
+          // TTS failed, skip this turn
+          currentTurnIndexRef.current++;
+        }
+      }
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [generateNewScript, playNext, processCommentTurns]);
+
+  // Check for comment batches to process
+  const checkForComments = useCallback(async () => {
+    const now = Date.now();
+    const timeSinceLastCheck = now - lastCommentCheckRef.current;
+    
+    // Check every 30 seconds for pending comments
+    if (timeSinceLastCheck < 30000) return;
+    lastCommentCheckRef.current = now;
+
+    try {
+      const res = await fetch(`/api/room/status?roomId=${roomId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pendingCommentBatch) {
+          console.log('[Audio] Processing comment batch from server');
+          const script = await generateNewScript(true, data.pendingCommentBatch.comments);
+          if (script) {
+            // Prioritize comment analysis by adding to front
+            commentQueueRef.current = [...commentQueueRef.current, ...script.turns];
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Audio] Comment check error:', err);
+    }
+  }, [roomId, generateNewScript]);
+
+  // Initial setup
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
-    console.log('[Audio] Starting podcast stream...');
+    console.log('[Audio] Starting continuous podcast stream...');
 
     async function startPodcast() {
       try {
         setStatus('loading');
         
-        console.log('[Audio] Generating script...');
-        const scriptRes = await fetch('/api/podcast/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomId, turns: 3 }),
-        });
-
-        if (!scriptRes.ok) {
-          console.error('[Audio] Script generation failed');
+        console.log('[Audio] Generating initial script...');
+        const script = await generateNewScript();
+        
+        if (!script) {
+          console.error('[Audio] Failed to generate initial script');
           return;
         }
 
-        const scriptData = await scriptRes.json();
-        if (!scriptData.script?.turns?.length) {
-          console.error('[Audio] No script returned');
-          return;
-        }
+        turnsRef.current = script.turns;
+        console.log(`[Audio] Initial script ready: ${script.turns.length} turns`);
 
-        scriptRef.current = scriptData.script;
-        console.log(`[Audio] Script ready: ${scriptData.script.turns.length} turns`);
-
-        prefetchTurns();
+        // Start prefetching and playing
+        prefetchAndGenerate();
       } catch (err) {
         console.error('[Audio] Error:', err);
       }
     }
 
     startPodcast();
-  }, [roomId]);
+  }, [generateNewScript, prefetchAndGenerate]);
 
+  // Continuous generation loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      prefetchAndGenerate();
+      checkForComments();
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [prefetchAndGenerate, checkForComments]);
+
+  // Audio event handlers
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -166,7 +282,7 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
       console.log('[Audio] Track ended');
       isPlayingRef.current = false;
       playNext();
-      prefetchTurns();
+      prefetchAndGenerate();
     };
 
     const handleError = (e: Event) => {
@@ -182,7 +298,7 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
     };
-  }, []);
+  }, [playNext, prefetchAndGenerate]);
 
   return (
     <div className="card overflow-hidden">
@@ -225,16 +341,18 @@ export default function AudioPlayer({ roomId }: AudioPlayerProps) {
             <div className="text-center">
               <p className="text-2xl font-display font-bold text-white">🎧 Live Analysis</p>
               <p className="text-steel-400 mt-1">
-                {currentSpeaker ? `Speaking: ${currentSpeaker}` : 'User hearing analysis'}
+                {currentSpeaker ? `Speaking: ${currentSpeaker}` : 'Listening to analysis'}
               </p>
+              <p className="text-xs text-steel-600 mt-2">Batch #{batchNumber}</p>
             </div>
           </div>
         )}
         
-        {status === 'ended' && (
+        {status === 'generating' && (
           <div className="flex flex-col items-center gap-4 z-10">
-            <span className="text-5xl">✅</span>
-            <p className="text-xl font-display font-semibold text-steel-300">Analysis Complete</p>
+            <div className="w-12 h-12 border-4 border-steel-700 border-t-accent-emerald rounded-full animate-spin" />
+            <p className="text-xl font-display font-semibold text-steel-300">Generating More Content...</p>
+            <p className="text-sm text-steel-500">The hosts are preparing their next segment</p>
           </div>
         )}
       </div>

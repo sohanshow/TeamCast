@@ -21,6 +21,7 @@ export interface PodcastEngineState {
   lastCommentProcessTime: number;
   isGenerating: boolean;
   lastContext: string;
+  pendingCommentBatch: CommentBatch | null; // Batch ready for AudioPlayer to pick up
 }
 
 // In-memory state store (in production, use Redis or similar)
@@ -39,6 +40,7 @@ export function getRoomState(roomId: string): PodcastEngineState {
       lastCommentProcessTime: Date.now(),
       isGenerating: false,
       lastContext: '',
+      pendingCommentBatch: null,
     });
   }
   return roomStates.get(roomId)!;
@@ -51,12 +53,47 @@ export function addComment(roomId: string, comment: Comment): CommentBatch | nul
   const state = getRoomState(roomId);
   state.comments.push(comment);
 
-  // Check if we should process comments
-  const timeSinceLastProcess = Date.now() - state.lastCommentProcessTime;
+  // Check if we should process comments (by count)
   const shouldProcessByCount = state.comments.length >= COMMENT_BATCH_SIZE;
-  const shouldProcessByTime = timeSinceLastProcess >= COMMENT_BATCH_INTERVAL_MS && state.comments.length > 0;
 
-  if (shouldProcessByCount || shouldProcessByTime) {
+  if (shouldProcessByCount && !state.pendingCommentBatch) {
+    const batch: CommentBatch = {
+      comments: [...state.comments],
+      processedAt: Date.now(),
+    };
+    state.comments = [];
+    state.lastCommentProcessTime = Date.now();
+    state.pendingCommentBatch = batch; // Store for AudioPlayer to pick up
+    return batch;
+  }
+
+  return null;
+}
+
+/**
+ * Check if there's a pending comment batch ready for processing
+ * This is called periodically to check time-based processing
+ * Returns and clears the pending batch so it's only processed once
+ */
+export function checkPendingCommentBatch(roomId: string): CommentBatch | null {
+  const state = getRoomState(roomId);
+  
+  // First, check if there's already a pending batch from count-based trigger
+  if (state.pendingCommentBatch) {
+    const batch = state.pendingCommentBatch;
+    state.pendingCommentBatch = null;
+    return batch;
+  }
+  
+  // Then check for time-based processing
+  if (state.comments.length === 0) {
+    return null;
+  }
+
+  const timeSinceLastProcess = Date.now() - state.lastCommentProcessTime;
+  const shouldProcessByTime = timeSinceLastProcess >= COMMENT_BATCH_INTERVAL_MS;
+
+  if (shouldProcessByTime) {
     const batch: CommentBatch = {
       comments: [...state.comments],
       processedAt: Date.now(),

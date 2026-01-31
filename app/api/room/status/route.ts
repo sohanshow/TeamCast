@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRoomStats, getAllTracks, needsMoreTracks } from '@/lib/podcast-engine';
+import { getRoomStats, getAllTracks, needsMoreTracks, checkPendingCommentBatch } from '@/lib/podcast-engine';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
   const stats = getRoomStats(roomId);
   const tracks = getAllTracks(roomId);
   const needsGeneration = needsMoreTracks(roomId);
+  
+  // Check if there's a pending comment batch ready for processing (time-based)
+  const pendingCommentBatch = checkPendingCommentBatch(roomId);
 
   return NextResponse.json({
     roomId,
@@ -26,5 +29,6 @@ export async function GET(request: NextRequest) {
       generatedAt: t.script.generatedAt,
     })),
     needsGeneration,
+    pendingCommentBatch,
   });
 }
