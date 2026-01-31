@@ -79,5 +79,5 @@ export const SPEAKERS = {
 
 // Constants
 export const COMMENT_BATCH_SIZE = 20; // Process comments every 20 messages
-export const COMMENT_BATCH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+export const COMMENT_BATCH_INTERVAL_MS = 30 * 1000; // 30 seconds
 export const PRE_GENERATE_TURNS = 3;

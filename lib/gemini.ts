@@ -44,18 +44,24 @@ export async function generatePodcastScript(
   turns: number = 3,
   context?: string,
   isCommentAnalysis: boolean = false,
-  comments?: Comment[]
+  comments?: Comment[],
+  basePrompt?: string
 ): Promise<PodcastScript> {
   let prompt: string;
+  
+  // Build the base context from room's base prompt
+  const baseContext = basePrompt 
+    ? `\n\nROOM CONTEXT (stay on this topic):\n${basePrompt}\n`
+    : '';
 
   if (isCommentAnalysis && comments && comments.length > 0) {
     const commentsList = comments
       .map((c) => `@${c.username}: "${c.text}"`)
       .join('\n');
 
-    prompt = `You are writing a podcast script for a Super Bowl pre-game analysis show called "TeamCast". 
-Two hosts are discussing the upcoming game and addressing audience comments.
-
+    prompt = `You are writing a podcast script for a live analysis show called "TeamCast". 
+Two hosts are discussing the topic and addressing audience comments.
+${baseContext}
 Host 1: ${SPEAKERS.Speaker1.name} (${SPEAKERS.Speaker1.role}) - Analytical, data-driven, strategic insights
 Host 2: ${SPEAKERS.Speaker2.name} (${SPEAKERS.Speaker2.role}) - Energetic, fan-focused, emotional takes
 
@@ -63,7 +69,7 @@ AUDIENCE COMMENTS TO ADDRESS:
 ${commentsList}
 
 Generate exactly ${turns} conversational exchanges between the hosts addressing these comments.
-Make it engaging, mention usernames when responding to their comments, and keep the Super Bowl analysis flowing naturally.
+Make it engaging, mention usernames when responding to their comments, and keep the analysis flowing naturally.
 Each exchange should feel natural and conversational.
 
 IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no explanation, just the JSON):
@@ -74,25 +80,16 @@ IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no e
 
 Make it sound natural, engaging, and like a real sports podcast. Address the users by name when responding to their comments.`;
   } else {
-    prompt = `You are writing a podcast script for a Super Bowl pre-game analysis show called "TeamCast".
-Two hosts are providing pre-game analysis, predictions, and hype for the upcoming Super Bowl.
-
+    prompt = `You are writing a podcast script for a live analysis show called "TeamCast".
+Two hosts are providing analysis, predictions, and engaging discussion.
+${baseContext}
 Host 1: ${SPEAKERS.Speaker1.name} (${SPEAKERS.Speaker1.role}) - Analytical, data-driven, discusses matchups, stats, and strategic insights
 Host 2: ${SPEAKERS.Speaker2.name} (${SPEAKERS.Speaker2.role}) - Energetic, fan-focused, brings emotional takes and fan perspectives
 
-${context ? `Previous context: ${context}\n\nContinue the discussion from where we left off.` : 'Start with an exciting intro to the pre-game show.'}
+${context ? `Previous context: ${context}\n\nContinue the discussion from where we left off.` : 'Start with an exciting intro to the show.'}
 
 Generate exactly ${turns} conversational exchanges (${turns * 2} total speaker turns) between the hosts.
-Each exchange should flow naturally and cover different aspects of the game.
-
-Topics to potentially cover:
-- Key player matchups
-- Injury reports and their impact
-- Weather conditions
-- Betting lines and predictions
-- Historical Super Bowl moments
-- Team momentum coming into the game
-- Coaching strategies
+Each exchange should flow naturally and cover different aspects of the topic.
 
 IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no explanation, just the JSON):
 [
@@ -100,7 +97,7 @@ IMPORTANT: Return ONLY a valid JSON array with this structure (no markdown, no e
   {"speaker": "Speaker2", "text": "..."}
 ]
 
-Make it sound natural, engaging, and like a real sports podcast.`;
+Make it sound natural, engaging, and like a real podcast.`;
   }
 
   try {

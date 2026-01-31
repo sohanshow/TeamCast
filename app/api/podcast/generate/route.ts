@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generatePodcastScript } from '@/lib/gemini';
 import { Comment } from '@/lib/types';
+import { getRoomConfig } from '@/lib/podcast-engine';
 
 // Simple in-memory lock to prevent concurrent generation per room
 const generatingRooms = new Set<string>();
@@ -32,13 +33,27 @@ export async function POST(request: NextRequest) {
     generatingRooms.add(roomId);
 
     try {
-      console.log('[Generate API] Starting generation...', { roomId, turns, isCommentAnalysis });
+      // Get room config for base prompt
+      const roomConfig = getRoomConfig(roomId);
+      const basePrompt = roomConfig?.basePrompt || '';
+      
+      if (isCommentAnalysis && comments.length > 0) {
+        console.log('[Generate API] Comment Analysis Request:', {
+          roomId,
+          turns,
+          commentCount: comments.length,
+          comments: comments.map((c: Comment) => ({ user: c.username, text: c.text.slice(0, 50) + (c.text.length > 50 ? '...' : '') }))
+        });
+      } else {
+        console.log('[Generate API] Starting generation...', { roomId, turns, isCommentAnalysis, hasBasePrompt: !!basePrompt });
+      }
       
       const script = await generatePodcastScript(
         turns,
         undefined,
         isCommentAnalysis,
-        comments as Comment[]
+        comments as Comment[],
+        basePrompt
       );
 
       console.log('[Generate API] Script generated:', script.turns.length, 'turns');

@@ -10,6 +10,58 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * Room Configuration - stores base prompts and settings for each room
+ */
+export interface RoomConfig {
+  roomId: string;
+  name: string;
+  basePrompt: string;
+  isActive: boolean;
+  createdAt: number;
+}
+
+// In-memory room configurations (in production, use a database)
+const roomConfigs = new Map<string, RoomConfig>();
+
+/**
+ * Create or update a room configuration
+ */
+export function upsertRoomConfig(config: Partial<RoomConfig> & { roomId: string }): RoomConfig {
+  const existing = roomConfigs.get(config.roomId);
+  const updated: RoomConfig = {
+    roomId: config.roomId,
+    name: config.name ?? existing?.name ?? config.roomId,
+    basePrompt: config.basePrompt ?? existing?.basePrompt ?? '',
+    isActive: config.isActive ?? existing?.isActive ?? true,
+    createdAt: existing?.createdAt ?? Date.now(),
+  };
+  roomConfigs.set(config.roomId, updated);
+  return updated;
+}
+
+/**
+ * Get room configuration
+ */
+export function getRoomConfig(roomId: string): RoomConfig | null {
+  return roomConfigs.get(roomId) || null;
+}
+
+/**
+ * Get all room configurations
+ */
+export function getAllRoomConfigs(): RoomConfig[] {
+  return Array.from(roomConfigs.values());
+}
+
+/**
+ * Delete room configuration
+ */
+export function deleteRoomConfig(roomId: string): boolean {
+  cleanupRoom(roomId); // Also cleanup runtime state
+  return roomConfigs.delete(roomId);
+}
+
+/**
  * Podcast Engine State Management
  * This manages the state of the podcast for a room
  */
