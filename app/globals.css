@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-surface text-white font-sans min-h-screen;
+    background: linear-gradient(180deg, #0a0a0b 0%, #0f0f12 50%, #0a0a0b 100%);
+    background-attachment: fixed;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-surface;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-steel-800 rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-steel-700;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface-overlay/80 backdrop-blur-xl border border-border;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+           bg-gradient-to-r from-accent to-accent-cyan 
+           text-white font-semibold rounded-lg
+           shadow-glow transition-all duration-200
+           hover:shadow-glow-lg hover:-translate-y-0.5
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           bg-surface-elevated border border-border text-white font-medium rounded-lg
+           transition-all duration-200
+           hover:bg-surface-highlight hover:border-steel-700;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           text-steel-400 hover:text-white hover:bg-surface-elevated
+           rounded-lg transition-all duration-200;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-surface-raised border border-border rounded-lg
+           text-white placeholder-steel-600
+           focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20
+           transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-surface-overlay border border-border rounded-xl overflow-hidden;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold 
+           uppercase tracking-wider rounded-full;
+  }
+
+  .badge-live {
+    @apply bg-accent-rose text-white;
+  }
+
+  .badge-accent {
+    @apply bg-accent/20 text-accent border border-accent/30;
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-bold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent to-accent-cyan bg-clip-text text-transparent;
+  }
+
+  .border-gradient {
+    border-image: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%) 1;
+  }
+
+  /* Audio wave bars */
+  .wave-bar {
+    @apply w-1 bg-accent rounded-full;
+    animation: wave 1s ease-in-out infinite;
+  }
+
+  .wave-bar:nth-child(1) { animation-delay: 0s; }
+  .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+  .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+  .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+}
+
+/* LiveKit overrides */
+.lk-room-container {
+  background: transparent !important;
+}
+
+.lk-participant-tile {
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
+  border-radius: 12px !important;
+}
