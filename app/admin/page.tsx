@@ -259,11 +259,18 @@ export default function AdminPage() {
                     </div>
                     <div className="flex gap-2">
                       <a
+                        href={`/host/${room.roomId}`}
+                        target="_blank"
+                        className="px-3 py-1.5 text-sm bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors font-semibold"
+                      >
+                        🎙️ Broadcast
+                      </a>
+                      <a
                         href={`/room/${room.roomId}`}
                         target="_blank"
                         className="px-3 py-1.5 text-sm bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg transition-colors"
                       >
-                        Open →
+                        Preview →
                       </a>
                       <button
                         onClick={() => deleteRoom(room.roomId)}
