@@ -1,19 +1,57 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+interface ActiveRoom {
+  roomId: string;
+  name: string;
+  listenerCount: number;
+  createdAt: number;
+}
 
 export default function Home() {
   const [username, setUsername] = useState('');
-  const [roomCode, setRoomCode] = useState('superbowl-2026');
+  const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
   const router = useRouter();
 
-  const handleJoin = async (e: React.FormEvent) => {
+  // Fetch active rooms on mount
+  useEffect(() => {
+    async function fetchActiveRooms() {
+      try {
+        const res = await fetch('/api/rooms');
+        if (res.ok) {
+          const data = await res.json();
+          setActiveRooms(data.rooms || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch active rooms:', err);
+      } finally {
+        setLoadingRooms(false);
+      }
+    }
+    fetchActiveRooms();
+
+    // Poll for updates every 10 seconds
+    const interval = setInterval(fetchActiveRooms, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleJoin = async (e: React.FormEvent, selectedRoomId?: string) => {
     e.preventDefault();
+    const targetRoom = selectedRoomId || roomCode;
+    
     if (!username.trim()) {
       setError('Please enter a username');
+      return;
+    }
+
+    if (!targetRoom.trim()) {
+      setError('Please select or enter a room code');
       return;
     }
 
@@ -22,12 +60,16 @@ export default function Home() {
 
     try {
       sessionStorage.setItem('teamcast_username', username.trim());
-      sessionStorage.setItem('teamcast_room', roomCode);
-      router.push(`/room/${roomCode}`);
+      sessionStorage.setItem('teamcast_room', targetRoom);
+      router.push(`/room/${targetRoom}`);
     } catch (err) {
       setError('Failed to join room. Please try again.');
       setIsJoining(false);
     }
+  };
+
+  const handleRoomSelect = (room: ActiveRoom) => {
+    setRoomCode(room.roomId);
   };
 
   return (
@@ -48,7 +90,7 @@ export default function Home() {
       </div>
 
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-16 lg:py-24">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
+        <div className="grid lg:grid-cols-2 gap-16 items-start">
           {/* Hero content */}
           <div className="space-y-8">
             {/* Live badge */}
@@ -75,8 +117,62 @@ export default function Home() {
               make predictions, and engage with fellow fans in real-time.
             </p>
 
+            {/* Active Rooms Section */}
+            {activeRooms.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-steel-300 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 bg-accent-emerald rounded-full animate-pulse" />
+                  Live Rooms
+                </h3>
+                <div className="space-y-2">
+                  {activeRooms.map((room) => (
+                    <button
+                      key={room.roomId}
+                      onClick={() => handleRoomSelect(room)}
+                      className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all
+                        ${roomCode === room.roomId 
+                          ? 'bg-accent/10 border-accent' 
+                          : 'bg-surface-overlay border-border hover:border-steel-700'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">🎙️</span>
+                        <div className="text-left">
+                          <p className="font-semibold text-white">{room.name}</p>
+                          <p className="text-xs text-steel-500 font-mono">{room.roomId}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 text-xs font-medium bg-accent-emerald/20 text-accent-emerald rounded-full">
+                          {room.listenerCount} listening
+                        </span>
+                        {roomCode === room.roomId && (
+                          <span className="text-accent">✓</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {loadingRooms && (
+              <div className="flex items-center gap-3 text-steel-500">
+                <div className="w-5 h-5 border-2 border-steel-700 border-t-accent rounded-full animate-spin" />
+                <span className="text-sm">Finding live rooms...</span>
+              </div>
+            )}
+
+            {!loadingRooms && activeRooms.length === 0 && (
+              <div className="p-4 bg-surface-overlay border border-border rounded-xl">
+                <p className="text-steel-400 text-sm">
+                  No live rooms at the moment. Enter a room code below or check back soon!
+                </p>
+              </div>
+            )}
+
             {/* Join Form */}
-            <form onSubmit={handleJoin} className="space-y-4 max-w-md">
+            <form onSubmit={(e) => handleJoin(e)} className="space-y-4 max-w-md">
               <div className="space-y-2">
                 <label htmlFor="username" className="block text-sm font-medium text-steel-300">
                   Your Display Name
@@ -95,7 +191,7 @@ export default function Home() {
 
               <div className="space-y-2">
                 <label htmlFor="room" className="block text-sm font-medium text-steel-300">
-                  Room Code
+                  Room Code {activeRooms.length > 0 && <span className="text-steel-600">(or select above)</span>}
                 </label>
                 <input
                   id="room"
@@ -115,7 +211,7 @@ export default function Home() {
               <button
                 type="submit"
                 className="btn-primary w-full py-4 text-lg"
-                disabled={isJoining}
+                disabled={isJoining || !roomCode.trim()}
               >
                 {isJoining ? (
                   <>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Room from '@/components/Room';
 import { v4 as uuidv4 } from 'uuid';
+import { joinRoom, leaveRoom } from '@/src/lib/firestore';
 
 interface TokenData {
   token: string;
@@ -18,7 +19,7 @@ export default function RoomPage() {
 
   const [tokenData, setTokenData] = useState<TokenData | null>(null);
   const [username, setUsername] = useState<string>('');
-  const [userId, setUserId] = useState<string>('');
+  const [odId, setodId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -31,8 +32,8 @@ export default function RoomPage() {
     }
 
     setUsername(storedUsername);
-    const newUserId = uuidv4();
-    setUserId(newUserId);
+    const newodId = uuidv4();
+    setodId(newodId);
 
     // Get LiveKit token
     async function getToken() {
@@ -56,6 +57,18 @@ export default function RoomPage() {
           livekitUrl: data.livekitUrl,
           identity: data.identity,
         });
+
+        // Register participant in Firestore
+        try {
+          await joinRoom({
+            odId: newodId,
+            userName: storedUsername!,
+            roomId: roomId,
+          });
+        } catch (err) {
+          console.warn('Failed to register participant in Firestore:', err);
+          // Don't block joining if this fails
+        }
       } catch (err) {
         console.error('Token error:', err);
         setError('Failed to connect to the room. Please try again.');
@@ -65,6 +78,15 @@ export default function RoomPage() {
     }
 
     getToken();
+
+    // Cleanup: remove participant when leaving
+    return () => {
+      if (newodId && roomId) {
+        leaveRoom(roomId, newodId).catch((err) => {
+          console.warn('Failed to remove participant from Firestore:', err);
+        });
+      }
+    };
   }, [roomId, router]);
 
   if (isLoading) {
@@ -116,7 +138,7 @@ export default function RoomPage() {
       username={username}
       token={tokenData.token}
       livekitUrl={tokenData.livekitUrl}
-      userId={userId}
+      userId={odId}
     />
   );
 }

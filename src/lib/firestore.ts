@@ -4,6 +4,7 @@ import {
     getDoc,
     getDocs,
     addDoc,
+    setDoc,
     updateDoc,
     deleteDoc,
     query,
@@ -13,8 +14,9 @@ import {
     serverTimestamp,
     Timestamp,
     increment,
+    writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase.js';
+import { db } from './firebase';
 
 // ============================================
 // Types
@@ -22,30 +24,34 @@ import { db } from './firebase.js';
 
 export interface Room {
     id: string;
-    title: string;
-    status: 'live' | 'ended' | 'scheduled';
-    teams: [string, string]; // The 2 NFL teams
+    roomId: string; // URL-friendly ID (e.g., "superbowl-2026")
+    name: string;
+    basePrompt: string;
+    isActive: boolean;
     listenerCount: number;
     createdAt?: Timestamp;
+    updatedAt?: Timestamp;
 }
 
 export interface Comment {
     id: string;
     text: string;
     userId: string;
-    userName: string;
+    username: string;
+    roomId: string;
     createdAt: Timestamp;
 }
 
 export interface Participant {
     id: string;
-    userId: string;
+    odId: string;
     userName: string;
+    roomId: string;
     joinedAt: Timestamp;
 }
 
 // ============================================
-// Rooms
+// Rooms Collection
 // ============================================
 
 /**
@@ -60,12 +66,13 @@ export async function getRooms(): Promise<Room[]> {
 }
 
 /**
- * Get all live rooms
+ * Get all active rooms
  */
-export async function getLiveRooms(): Promise<Room[]> {
+export async function getActiveRooms(): Promise<Room[]> {
     const q = query(
         collection(db, 'rooms'),
-        where('status', '==', 'live')
+        where('isActive', '==', true),
+        orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
@@ -75,27 +82,60 @@ export async function getLiveRooms(): Promise<Room[]> {
 }
 
 /**
- * Get a room by ID
+ * Get a room by its URL-friendly roomId
  */
-export async function getRoom(roomId: string): Promise<Room | null> {
-    const docRef = doc(db, 'rooms', roomId);
+export async function getRoomByRoomId(roomId: string): Promise<Room | null> {
+    const q = query(
+        collection(db, 'rooms'),
+        where('roomId', '==', roomId)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() } as Room;
+}
+
+/**
+ * Get a room by document ID
+ */
+export async function getRoom(docId: string): Promise<Room | null> {
+    const docRef = doc(db, 'rooms', docId);
     const snapshot = await getDoc(docRef);
     if (!snapshot.exists()) return null;
     return { id: snapshot.id, ...snapshot.data() } as Room;
 }
 
 /**
- * Create a new room
+ * Create or update a room (upsert by roomId)
  */
-export async function createRoom(
-    roomData: Omit<Room, 'id' | 'listenerCount' | 'createdAt'>
-): Promise<string> {
-    const docRef = await addDoc(collection(db, 'rooms'), {
-        ...roomData,
-        listenerCount: 0,
-        createdAt: serverTimestamp(),
-    });
-    return docRef.id;
+export async function upsertRoom(
+    roomData: Omit<Room, 'id' | 'listenerCount' | 'createdAt' | 'updatedAt'>
+): Promise<Room> {
+    // Check if room already exists
+    const existingRoom = await getRoomByRoomId(roomData.roomId);
+    
+    if (existingRoom) {
+        // Update existing room
+        const docRef = doc(db, 'rooms', existingRoom.id);
+        await updateDoc(docRef, {
+            ...roomData,
+            updatedAt: serverTimestamp(),
+        });
+        return { ...existingRoom, ...roomData };
+    } else {
+        // Create new room
+        const docRef = await addDoc(collection(db, 'rooms'), {
+            ...roomData,
+            listenerCount: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        return { 
+            id: docRef.id, 
+            ...roomData, 
+            listenerCount: 0 
+        };
+    }
 }
 
 /**
@@ -105,44 +145,57 @@ export async function updateRoom(
     roomId: string,
     updates: Partial<Omit<Room, 'id'>>
 ): Promise<void> {
-    const docRef = doc(db, 'rooms', roomId);
-    await updateDoc(docRef, updates);
-}
-
-/**
- * Delete a room
- */
-export async function deleteRoom(roomId: string): Promise<void> {
-    const docRef = doc(db, 'rooms', roomId);
-    await deleteDoc(docRef);
-}
-
-/**
- * Subscribe to a room (real-time updates)
- */
-export function subscribeToRoom(
-    roomId: string,
-    callback: (room: Room | null) => void
-): () => void {
-    const docRef = doc(db, 'rooms', roomId);
-    return onSnapshot(docRef, (snapshot) => {
-        if (!snapshot.exists()) {
-            callback(null);
-            return;
-        }
-        callback({ id: snapshot.id, ...snapshot.data() } as Room);
+    const existingRoom = await getRoomByRoomId(roomId);
+    if (!existingRoom) throw new Error('Room not found');
+    
+    const docRef = doc(db, 'rooms', existingRoom.id);
+    await updateDoc(docRef, {
+        ...updates,
+        updatedAt: serverTimestamp(),
     });
 }
 
 /**
- * Subscribe to all live rooms (real-time)
+ * Delete a room and all its related data (comments, participants)
  */
-export function subscribeToLiveRooms(
+export async function deleteRoomWithData(roomId: string): Promise<void> {
+    const existingRoom = await getRoomByRoomId(roomId);
+    if (!existingRoom) throw new Error('Room not found');
+    
+    const batch = writeBatch(db);
+    
+    // Delete all comments for this room
+    const commentsSnapshot = await getDocs(
+        query(collection(db, 'comments'), where('roomId', '==', roomId))
+    );
+    commentsSnapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+    });
+    
+    // Delete all participants for this room
+    const participantsSnapshot = await getDocs(
+        query(collection(db, 'participants'), where('roomId', '==', roomId))
+    );
+    participantsSnapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+    });
+    
+    // Delete the room itself
+    batch.delete(doc(db, 'rooms', existingRoom.id));
+    
+    await batch.commit();
+}
+
+/**
+ * Subscribe to active rooms (real-time)
+ */
+export function subscribeToActiveRooms(
     callback: (rooms: Room[]) => void
 ): () => void {
     const q = query(
         collection(db, 'rooms'),
-        where('status', '==', 'live')
+        where('isActive', '==', true),
+        orderBy('createdAt', 'desc')
     );
     return onSnapshot(q, (snapshot) => {
         const rooms = snapshot.docs.map((doc) => ({
@@ -153,8 +206,29 @@ export function subscribeToLiveRooms(
     });
 }
 
+/**
+ * Subscribe to a single room (real-time)
+ */
+export function subscribeToRoom(
+    roomId: string,
+    callback: (room: Room | null) => void
+): () => void {
+    const q = query(
+        collection(db, 'rooms'),
+        where('roomId', '==', roomId)
+    );
+    return onSnapshot(q, (snapshot) => {
+        if (snapshot.empty) {
+            callback(null);
+            return;
+        }
+        const doc = snapshot.docs[0];
+        callback({ id: doc.id, ...doc.data() } as Room);
+    });
+}
+
 // ============================================
-// Comments (subcollection of rooms)
+// Comments Collection
 // ============================================
 
 /**
@@ -162,7 +236,8 @@ export function subscribeToLiveRooms(
  */
 export async function getComments(roomId: string): Promise<Comment[]> {
     const q = query(
-        collection(db, 'rooms', roomId, 'comments'),
+        collection(db, 'comments'),
+        where('roomId', '==', roomId),
         orderBy('createdAt', 'asc')
     );
     const snapshot = await getDocs(q);
@@ -173,39 +248,40 @@ export async function getComments(roomId: string): Promise<Comment[]> {
 }
 
 /**
- * Add a comment to a room
+ * Add a comment
  */
 export async function addComment(
-    roomId: string,
     commentData: Omit<Comment, 'id' | 'createdAt'>
-): Promise<string> {
-    const docRef = await addDoc(collection(db, 'rooms', roomId, 'comments'), {
+): Promise<Comment> {
+    const docRef = await addDoc(collection(db, 'comments'), {
         ...commentData,
         createdAt: serverTimestamp(),
     });
-    return docRef.id;
+    return {
+        id: docRef.id,
+        ...commentData,
+        createdAt: Timestamp.now(),
+    };
 }
 
 /**
  * Delete a comment
  */
-export async function deleteComment(
-    roomId: string,
-    commentId: string
-): Promise<void> {
-    const docRef = doc(db, 'rooms', roomId, 'comments', commentId);
+export async function deleteComment(commentId: string): Promise<void> {
+    const docRef = doc(db, 'comments', commentId);
     await deleteDoc(docRef);
 }
 
 /**
- * Subscribe to comments (real-time)
+ * Subscribe to comments for a room (real-time)
  */
 export function subscribeToComments(
     roomId: string,
     callback: (comments: Comment[]) => void
 ): () => void {
     const q = query(
-        collection(db, 'rooms', roomId, 'comments'),
+        collection(db, 'comments'),
+        where('roomId', '==', roomId),
         orderBy('createdAt', 'asc')
     );
     return onSnapshot(q, (snapshot) => {
@@ -218,14 +294,18 @@ export function subscribeToComments(
 }
 
 // ============================================
-// Participants (subcollection of rooms)
+// Participants Collection
 // ============================================
 
 /**
  * Get all participants in a room
  */
 export async function getParticipants(roomId: string): Promise<Participant[]> {
-    const snapshot = await getDocs(collection(db, 'rooms', roomId, 'participants'));
+    const q = query(
+        collection(db, 'participants'),
+        where('roomId', '==', roomId)
+    );
+    const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -236,20 +316,35 @@ export async function getParticipants(roomId: string): Promise<Participant[]> {
  * Join a room (add participant)
  */
 export async function joinRoom(
-    roomId: string,
-    userData: Omit<Participant, 'id' | 'joinedAt'>
+    participantData: Omit<Participant, 'id' | 'joinedAt'>
 ): Promise<string> {
-    // Add participant to subcollection
-    const docRef = await addDoc(collection(db, 'rooms', roomId, 'participants'), {
-        ...userData,
+    // Check if user is already in the room
+    const existingQ = query(
+        collection(db, 'participants'),
+        where('roomId', '==', participantData.roomId),
+        where('odId', '==', participantData.odId)
+    );
+    const existingSnapshot = await getDocs(existingQ);
+    
+    if (!existingSnapshot.empty) {
+        // Already joined, return existing ID
+        return existingSnapshot.docs[0].id;
+    }
+    
+    // Add participant
+    const docRef = await addDoc(collection(db, 'participants'), {
+        ...participantData,
         joinedAt: serverTimestamp(),
     });
 
-    // Increment listener count
-    const roomRef = doc(db, 'rooms', roomId);
-    await updateDoc(roomRef, {
-        listenerCount: increment(1),
-    });
+    // Increment listener count on room
+    const room = await getRoomByRoomId(participantData.roomId);
+    if (room) {
+        const roomRef = doc(db, 'rooms', room.id);
+        await updateDoc(roomRef, {
+            listenerCount: increment(1),
+        });
+    }
 
     return docRef.id;
 }
@@ -263,8 +358,9 @@ export async function leaveRoom(
 ): Promise<void> {
     // Find and delete the participant document
     const q = query(
-        collection(db, 'rooms', roomId, 'participants'),
-        where('userId', '==', odId)
+        collection(db, 'participants'),
+        where('roomId', '==', roomId),
+        where('odId', '==', odId)
     );
     const snapshot = await getDocs(q);
 
@@ -272,11 +368,14 @@ export async function leaveRoom(
         await deleteDoc(participantDoc.ref);
     }
 
-    // Decrement listener count
-    const roomRef = doc(db, 'rooms', roomId);
-    await updateDoc(roomRef, {
-        listenerCount: increment(-1),
-    });
+    // Decrement listener count on room
+    const room = await getRoomByRoomId(roomId);
+    if (room && room.listenerCount > 0) {
+        const roomRef = doc(db, 'rooms', room.id);
+        await updateDoc(roomRef, {
+            listenerCount: increment(-1),
+        });
+    }
 }
 
 /**
@@ -286,7 +385,11 @@ export function subscribeToParticipants(
     roomId: string,
     callback: (participants: Participant[]) => void
 ): () => void {
-    return onSnapshot(collection(db, 'rooms', roomId, 'participants'), (snapshot) => {
+    const q = query(
+        collection(db, 'participants'),
+        where('roomId', '==', roomId)
+    );
+    return onSnapshot(q, (snapshot) => {
         const participants = snapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),

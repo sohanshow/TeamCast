@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Rooms collection
+    match /rooms/{roomId} {
+      // Anyone can read rooms
+      allow read: if true;
+      // Only authenticated or localhost can write (for dev)
+      allow write: if true; // TODO: Add auth check for production
+    }
+    
+    // Comments collection
+    match /comments/{commentId} {
+      // Anyone can read comments
+      allow read: if true;
+      // Anyone can create comments (username required)
+      allow create: if request.resource.data.username != null 
+                    && request.resource.data.text != null
+                    && request.resource.data.roomId != null;
+      // Only allow delete by admin (for now, allow all for dev)
+      allow delete: if true;
+      // No updates to comments
+      allow update: if false;
+    }
+    
+    // Participants collection
+    match /participants/{participantId} {
+      // Anyone can read participants
+      allow read: if true;
+      // Anyone can join/leave
+      allow write: if true;
+    }
+  }
+}
