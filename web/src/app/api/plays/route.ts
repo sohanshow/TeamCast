@@ -23,28 +23,59 @@ interface EnrichedPlay {
   home_score: number;
   away_score: number;
   match_confidence: number;
+  scene_description?: string;
+  camera_angle?: string;
+  formation_offense?: string;
+  formation_defense?: string;
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
+function parseCSV(csvContent: string): { headers: string[], rows: string[][] } {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
   let inQuotes = false;
   
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  for (let i = 0; i < csvContent.length; i++) {
+    const char = csvContent[i];
+    const nextChar = csvContent[i + 1];
     
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && nextChar === '"') {
+        // Escaped quote
+        currentField += '"';
+        i++; // Skip next quote
+      } else {
+        // Toggle quote mode
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
+      currentRow.push(currentField);
+      currentField = '';
+    } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+      currentRow.push(currentField);
+      currentField = '';
+      if (currentRow.length > 0 && currentRow.some(f => f.length > 0)) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      if (char === '\r') i++; // Skip \n in \r\n
+    } else if (char !== '\r') {
+      currentField += char;
     }
   }
-  result.push(current);
   
-  return result;
+  // Handle last field/row
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField);
+    if (currentRow.some(f => f.length > 0)) {
+      rows.push(currentRow);
+    }
+  }
+  
+  const headers = rows[0] || [];
+  const dataRows = rows.slice(1);
+  
+  return { headers, rows: dataRows };
 }
 
 export async function GET() {
@@ -62,19 +93,17 @@ export async function GET() {
       });
     }
 
-    // Read and parse CSV
+    // Read and parse CSV (handles multi-line quoted fields)
     const csvContent = await fs.readFile(csvPath, 'utf-8');
-    const lines = csvContent.trim().split('\n');
+    const { headers, rows } = parseCSV(csvContent);
     
-    if (lines.length < 2) {
+    if (rows.length === 0) {
       return NextResponse.json({ plays: [], message: 'CSV file is empty' });
     }
 
-    const headers = parseCSVLine(lines[0]);
     const plays: EnrichedPlay[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]);
+    for (const values of rows) {
       const play: Record<string, string | number | boolean> = {};
       
       headers.forEach((header, index) => {

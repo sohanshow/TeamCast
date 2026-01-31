@@ -394,17 +394,46 @@ class NFLPipeline:
         enriched_df = self.enrich_plays(plays_df)
         results['plays_enriched'] = len(enriched_df)
         
-        # Save enriched data
-        output_filename = f"enriched_{year}_w{week_num:02d}.csv"
-        self.save_enriched_data(enriched_df, output_filename)
-        
         # Step 3: Generate scene descriptions
         print("\n" + "="*60)
-        print("STEP 3: Generating scene descriptions with Gemini")
+        print("STEP 3: Generating tactical scene descriptions")
         print("="*60)
         scenes = self.generate_scenes(enriched_df, tracking_df)
         results['scenes_generated'] = len(scenes)
         results['scenes'] = scenes
+        
+        # Add scene descriptions to enriched DataFrame
+        scene_data = {
+            (s.game_id, s.play_id): {
+                'scene_description': s.description,
+                'camera_angle': s.camera_angle,
+                'formation_offense': s.formation_offense,
+                'formation_defense': s.formation_defense,
+            }
+            for s in scenes
+        }
+        
+        # Merge scene data into enriched_df
+        enriched_df['scene_description'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('scene_description', ''),
+            axis=1
+        )
+        enriched_df['camera_angle'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('camera_angle', ''),
+            axis=1
+        )
+        enriched_df['formation_offense'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('formation_offense', ''),
+            axis=1
+        )
+        enriched_df['formation_defense'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('formation_defense', ''),
+            axis=1
+        )
+        
+        # Save enriched data with scene descriptions
+        output_filename = f"enriched_{year}_w{week_num:02d}.csv"
+        self.save_enriched_data(enriched_df, output_filename)
         
         # Step 4: Generate videos (if requested)
         if generate_video:
@@ -415,6 +444,88 @@ class NFLPipeline:
             results['videos_attempted'] = len(videos)
             results['videos_successful'] = sum(1 for v in videos if v.success)
             results['videos'] = videos
+        
+        return results
+    
+    def generate_scenes_from_enriched(
+        self,
+        week_num: int,
+        year: int = 2023,
+        max_plays: Optional[int] = None
+    ) -> dict:
+        """
+        Generate scene descriptions from existing enriched CSV data.
+        Use when raw tracking data is not available.
+        
+        Args:
+            week_num: Week number (1-18)
+            year: Season year
+            max_plays: Optional limit on number of plays
+            
+        Returns:
+            Dict with results
+        """
+        results = {}
+        
+        # Load existing enriched data
+        enriched_path = os.path.join(
+            self.output_dir, 'enriched', f"enriched_{year}_w{week_num:02d}.csv"
+        )
+        
+        if not os.path.exists(enriched_path):
+            raise FileNotFoundError(f"Enriched data not found: {enriched_path}")
+        
+        print(f"\n{'='*60}")
+        print("Loading existing enriched data")
+        print(f"{'='*60}")
+        enriched_df = pd.read_csv(enriched_path)
+        print(f"Loaded {len(enriched_df)} enriched plays")
+        
+        if max_plays:
+            enriched_df = enriched_df.head(max_plays)
+            print(f"Limited to {max_plays} plays")
+        
+        results['plays_loaded'] = len(enriched_df)
+        
+        # Generate scene descriptions (without tracking data)
+        print(f"\n{'='*60}")
+        print("Generating tactical scene descriptions")
+        print(f"{'='*60}")
+        scenes = self.generate_scenes(enriched_df, tracking_df=None)
+        results['scenes_generated'] = len(scenes)
+        results['scenes'] = scenes
+        
+        # Add scene descriptions to DataFrame
+        scene_data = {
+            (str(s.game_id), s.play_id): {
+                'scene_description': s.description,
+                'camera_angle': s.camera_angle,
+                'formation_offense': s.formation_offense,
+                'formation_defense': s.formation_defense,
+            }
+            for s in scenes
+        }
+        
+        enriched_df['scene_description'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('scene_description', ''),
+            axis=1
+        )
+        enriched_df['camera_angle'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('camera_angle', ''),
+            axis=1
+        )
+        enriched_df['formation_offense'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('formation_offense', ''),
+            axis=1
+        )
+        enriched_df['formation_defense'] = enriched_df.apply(
+            lambda row: scene_data.get((str(row['game_id']), row['play_id']), {}).get('formation_defense', ''),
+            axis=1
+        )
+        
+        # Save updated data
+        output_filename = f"enriched_{year}_w{week_num:02d}.csv"
+        self.save_enriched_data(enriched_df, output_filename)
         
         return results
 
@@ -436,6 +547,8 @@ def main():
                        help='Run full pipeline including video generation')
     parser.add_argument('--no-video', action='store_true',
                        help='Skip video generation')
+    parser.add_argument('--scenes-only', action='store_true',
+                       help='Generate scene descriptions from existing enriched data')
     
     args = parser.parse_args()
     
@@ -450,7 +563,33 @@ def main():
         output_dir=output_dir
     )
     
-    if args.full:
+    if args.scenes_only:
+        # Generate scenes from existing enriched data
+        results = pipeline.generate_scenes_from_enriched(
+            week_num=args.week,
+            max_plays=args.max_plays
+        )
+        
+        # Print summary
+        print(f"\n{'='*60}")
+        print("SCENE GENERATION SUMMARY")
+        print(f"{'='*60}")
+        print(f"Plays loaded: {results['plays_loaded']}")
+        print(f"Scenes generated: {results['scenes_generated']}")
+        
+        # Print sample scenes
+        print(f"\n{'='*60}")
+        print("SAMPLE TACTICAL SCENE DESCRIPTIONS")
+        print(f"{'='*60}")
+        for scene in results['scenes'][:3]:
+            print(f"\n--- Play {scene.play_id} ---")
+            print(f"Camera: {scene.camera_angle}")
+            print(f"Formation (Off): {scene.formation_offense}")
+            print(f"Formation (Def): {scene.formation_defense}")
+            print(f"Duration hint: {scene.duration_hint}s")
+            print(f"\n{scene.description}")
+    
+    elif args.full:
         # Run full pipeline
         results = pipeline.run_full_pipeline(
             week_num=args.week,

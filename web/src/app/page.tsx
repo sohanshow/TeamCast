@@ -27,6 +27,9 @@ interface EnrichedPlay {
   away_score: number;
   match_confidence: number;
   scene_description?: string;
+  camera_angle?: string;
+  formation_offense?: string;
+  formation_defense?: string;
 }
 
 export default function Home() {
@@ -208,16 +211,43 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Scene Description */}
+                {/* Tactical Analysis - Scene Description */}
                 {selectedPlay.scene_description && (
                   <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      <span>🎬</span>
-                      AI Scene Description
+                      <span>🎯</span>
+                      Tactical Film Analysis
                     </h3>
-                    <p className="text-slate-300 leading-relaxed">
-                      {selectedPlay.scene_description}
-                    </p>
+                    
+                    {/* Formation & Camera Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                      {selectedPlay.formation_offense && (
+                        <div className="bg-blue-900/30 rounded-lg p-3 border border-blue-700/50">
+                          <p className="text-xs text-blue-400 mb-1">Offensive Formation</p>
+                          <p className="text-white font-medium">{selectedPlay.formation_offense}</p>
+                        </div>
+                      )}
+                      {selectedPlay.formation_defense && (
+                        <div className="bg-red-900/30 rounded-lg p-3 border border-red-700/50">
+                          <p className="text-xs text-red-400 mb-1">Defensive Alignment</p>
+                          <p className="text-white font-medium">{selectedPlay.formation_defense}</p>
+                        </div>
+                      )}
+                      {selectedPlay.camera_angle && (
+                        <div className="bg-purple-900/30 rounded-lg p-3 border border-purple-700/50">
+                          <p className="text-xs text-purple-400 mb-1">Film Angle</p>
+                          <p className="text-white font-medium text-sm">{selectedPlay.camera_angle.split(',')[0]}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Scene Description - Coaching Film Style */}
+                    <div className="bg-slate-900/50 rounded-lg p-4 border-l-4 border-green-500">
+                      <p className="text-xs text-green-400 mb-2 font-medium">ALL-22 COACHING FILM DESCRIPTION</p>
+                      <p className="text-slate-300 leading-relaxed whitespace-pre-line">
+                        {selectedPlay.scene_description}
+                      </p>
+                    </div>
                   </div>
                 )}
               </>

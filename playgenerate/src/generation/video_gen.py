@@ -52,16 +52,20 @@ class VideoConfig:
 
 
 class VideoGenerator:
-    """Generates videos from scene descriptions using Veo."""
+    """Generates tactical coaching film videos from scene descriptions using Veo."""
     
-    # Veo prompt prefix for sports content
-    PROMPT_PREFIX = """Cinematic NFL football game footage, broadcast quality, 
-professional sports camera work, stadium atmosphere, realistic player movements, 
+    # Veo prompt prefix for All-22 coaching film style
+    PROMPT_PREFIX = """NFL All-22 coaching film footage, elevated camera angle 40 yards above sideline, 
+professional broadcast quality showing all 22 players on field, clear player identification by position and jersey number, 
+visible yard lines and hash marks for reference, clean tactical view without graphics overlays, 
+realistic NFL stadium lighting, authentic player movements and formations, 
 """
     
-    # Negative prompt to avoid common issues
-    NEGATIVE_PROMPT = """cartoon, animated, low quality, blurry, 
-distorted faces, unrealistic physics, static image, watermark"""
+    # Negative prompt to avoid issues that hurt tactical analysis
+    NEGATIVE_PROMPT = """cartoon, animated, low quality, blurry, ground-level angle, 
+dramatic close-ups, crowd focus, celebration shots, shaky camera, 
+artistic effects, slow motion unless specified, highlight reel style, 
+obstructed view, missing players, unrealistic formations"""
     
     def __init__(
         self,
@@ -337,16 +341,20 @@ if __name__ == "__main__":
     for key, value in status.items():
         print(f"  {key}: {value}")
     
-    # Test with sample scene
+    # Test with sample scene - tactical coaching film style
     sample_scene = {
-        'description': '''Quarter 1, 14:25 remaining at GEHA Field at Arrowhead Stadium. 
-        3rd and 3 from the Detroit 32-yard line. Jared Goff drops back in shotgun formation, 
-        surveying the Kansas City defense. He fires a deep pass down the right sideline 
-        intended for Josh Reynolds, but the ball sails out of bounds as Reynolds can't 
-        make the catch. The Chiefs crowd roars as the Lions are forced to punt.''',
+        'description': '''All-22 coaching film view. Q1 14:25, 3&3 at the 32-yard line. 
+        Pre-snap: Offense in 11 personnel (3 WR), defense shows Nickel with single-high safety.
+        Post-snap: QB in shotgun, 5-step drop. Route concept: deep out/comeback combination 
+        to the boundary side. X receiver runs 15-yard comeback, Z on deep over. Protection 
+        slides left, RB checks backside rusher. Coverage rotates to Cover-3 post-snap.
+        Ball released to X receiver on comeback - pass incomplete, CB in trail coverage 
+        with good leverage. Key teaching point: coverage disguise pre-snap vs post-snap rotation.
+        Camera: Elevated All-22 sideline view, 40 yards high, all players visible, 
+        yard lines and hash marks clear for reference.''',
         'play_id': 101,
         'game_id': '2023090700',
-        'style_hints': ['pressure situation', 'crowd noise', 'dramatic']
+        'style_hints': ['professional broadcast quality', 'tactical clarity', 'clear route visualization', 'coverage indicators']
     }
     
     print("\n\nTest video generation:")

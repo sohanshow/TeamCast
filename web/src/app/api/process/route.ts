@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
     // Path to the pipeline
     const playgenDir = path.join(process.cwd(), '..', 'playgenerate');
     const venvActivate = `source ${path.join(playgenDir, 'venv', 'bin', 'activate')}`;
-    const pythonCmd = `python3 ${path.join(playgenDir, 'src', 'pipeline.py')} --week ${week} --max-plays ${maxPlays}`;
+    // Use --scenes-only to generate tactical scene descriptions from existing enriched data
+    const pythonCmd = `python3 ${path.join(playgenDir, 'src', 'pipeline.py')} --week ${week} --max-plays ${maxPlays} --scenes-only`;
     
     // Full command
     const fullCmd = `cd ${playgenDir} && ${venvActivate} && ${pythonCmd}`;
