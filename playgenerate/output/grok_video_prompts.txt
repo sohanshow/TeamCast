@@ -1,0 +1,140 @@
+================================================================================
+GROK VIDEO GENERATION PROMPTS
+Generated: 2026-01-31 15:04:36
+================================================================================
+
+Instructions:
+1. Go to https://grok.x.ai or use the Grok app
+2. Select 'Create Video' or use video generation
+3. Copy and paste each prompt below
+4. Recommended settings: 720p, 16:9 aspect ratio, 8 seconds
+
+================================================================================
+
+================================================================================
+PROMPT 1: Play 74 (Game 2024120805)
+================================================================================
+
+Play Info:
+  - Pittsburgh Steelers vs Cleveland Browns
+  - Q3 13:20
+  - 3 & 4 at yardline 95
+  - Description: (No Huddle, Shotgun) J.Winston pass short right to M.Woods to PIT 1 for 14 yards.PENALTY on CLV-M.Woods, Offensive Pass Interference, 10 yards, enforced at PIT 15 - No Play.
+
+COPY THIS PROMPT:
+----------------------------------------
+
+Hyper-realistic NFL football simulation, professional broadcast quality, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
+players shown as distinct figures in team uniforms (one dark team, one light team), 
+fixed overhead camera position with no movement or shake, clean tactical coaching film visualization, 
+realistic stadium lighting, realistic player spacing and formation alignment, 
+smooth player movements showing routes, blocking assignments, and defensive coverage, cinematic quality, professional NFL broadcast, tactical coaching film, hyper realistic, [SCENE START]
+
+**EXT. FOOTBALL STADIUM - DAY**
+
+All-22 elevated sideline view, 40 yards high, full field visible. It's 3rd and 4 at the 50-yard line. The "Light Team" offense is in shotgun, appearing to be in a 3x1 receiver set, no huddle. The "Dark Team" defense shows a light box, 6-man box with two deep safeties, and what appears to be a nickel package.
+
+At the snap, the Light Team quarterback takes a quick drop. The receivers run a combination route: inside receiver runs a slant, with the outside receiver on the right executing a quick out. The Dark Team defense reacts with zone coverage, dropping into their assigned areas.
+
+The quarterback delivers a short pass to the receiver on the right. The receiver catches the ball around the 15 and runs down to the 1 yard line, but then is called for offensive pass interference. The play gained 14 yards but was called back due to the penalty.
+
+[SCENE END]
+
+----------------------------------------
+
+
+================================================================================
+PROMPT 2: Play 312 (Game 2024120805)
+================================================================================
+
+Play Info:
+  - Pittsburgh Steelers vs Cleveland Browns
+  - Q1 8:09
+  - 1 & 10 at yardline 54
+  - Description: N.Chubb left tackle to CLV 44 for no gain (T.Watt, L.Ogunjobi).
+
+COPY THIS PROMPT:
+----------------------------------------
+
+Hyper-realistic NFL football simulation, professional broadcast quality, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
+players shown as distinct figures in team uniforms (one dark team, one light team), 
+fixed overhead camera position with no movement or shake, clean tactical coaching film visualization, 
+realistic stadium lighting, realistic player spacing and formation alignment, 
+smooth player movements showing routes, blocking assignments, and defensive coverage, cinematic quality, professional NFL broadcast, tactical coaching film, hyper realistic, [SCENE START]
+
+**CAMERA**: Elevated All-22 sideline view, centered on the line of scrimmage at the 50-yard line. First and ten.
+
+**PRE-SNAP (0:00-0:02)**: The Dark Team offense lines up in a balanced formation. The defensive Light Team shows a standard front with two down linemen and stand-up linebackers. Focus is on identifying the key offensive and defensive personnel groupings as they align pre-snap.
+
+**POST-SNAP (0:02-0:05)**: The play begins with the Dark Team executing a run play to the left tackle. The offensive line attempts a zone blocking scheme, with linemen moving laterally to open a running lane. The Light Team defense crashes down, flowing to the ball. Watch for the defensive end on the left collapsing the edge, forcing the running back inside.
+
+**EXECUTION (0:02-0:05)**: Focus on the left guard and left tackle's double team at the point of attack. Observe how the running back reads the blocks and attempts to find an opening. Note the linebacker's run fill and penetration into the backfield.
+
+**RESULT ANALYSIS (0:05-0:08)**: The running back is met at the line of scrimmage for no gain. The All-22 view shows the Light Team defensive lineman penetrating the line, disrupting the blocking scheme, and preventing the running back from reaching the second level. The play fails due to defensive penetration.
+
+[SCENE END]
+
+----------------------------------------
+
+
+================================================================================
+PROMPT 3: Play 453 (Game 2024120805)
+================================================================================
+
+Play Info:
+  - Pittsburgh Steelers vs Cleveland Browns
+  - Q3 4:01
+  - 1 & 10 at yardline 30
+  - Description: (No Huddle, Shotgun) R.Wilson pass incomplete short left to J.Warren [I.McGuire].
+
+COPY THIS PROMPT:
+----------------------------------------
+
+Hyper-realistic NFL football simulation, professional broadcast quality, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
+players shown as distinct figures in team uniforms (one dark team, one light team), 
+fixed overhead camera position with no movement or shake, clean tactical coaching film visualization, 
+realistic stadium lighting, realistic player spacing and formation alignment, 
+smooth player movements showing routes, blocking assignments, and defensive coverage, cinematic quality, professional NFL broadcast, tactical coaching film, hyper realistic, [SCENE START]
+
+Establish an All-22 elevated sideline view of the field at the 50-yard line. The offensive team ("Light Team") lines up in a shotgun formation, no huddle, with likely 3 WRs and 1 RB on the field. The defensive team ("Dark Team") shows a standard four-man front. Focus pre-snap on the defensive alignment to identify the coverage shell. Post-snap, the quarterback targets a short pass to the left side to the RB. Show the RB running a short route of approximately 3 yards while the outside receiver runs a comeback route. Visually track the defensive reaction to the pass concept, noting any blitzes or zone rotations. Detail the protection scheme of the offensive line, showing the slide to the right. Highlight the pressure from the defender impacting the throw. The play results in an incomplete pass due to the defensive pressure.
+[SCENE END]
+
+----------------------------------------
+
+
+================================================================================
+PROMPT 4: Play 635 (Game 2024120805)
+================================================================================
+
+Play Info:
+  - Pittsburgh Steelers vs Cleveland Browns
+  - Q1 12:11
+  - 4 & 22 at yardline 15
+  - Description: C.Bojorquez punts 42 yards to CLV 47, Center-R.Sunahara. C.Austin to CLV 36 for 11 yards (Da.Bell; N.Watson).
+
+COPY THIS PROMPT:
+----------------------------------------
+
+Hyper-realistic NFL football simulation, professional broadcast quality, bird's eye aerial camera view looking straight down at the football field from 50 yards above, 
+showing complete view of all 22 players on the field at all times, green football field with white yard lines and hash marks clearly visible, 
+players shown as distinct figures in team uniforms (one dark team, one light team), 
+fixed overhead camera position with no movement or shake, clean tactical coaching film visualization, 
+realistic stadium lighting, realistic player spacing and formation alignment, 
+smooth player movements showing routes, blocking assignments, and defensive coverage, cinematic quality, professional NFL broadcast, tactical coaching film, hyper realistic, [SCENE START]
+
+Establish All-22 view from the elevated sideline perspective, showcasing the entire field of play. The Light Team is lined up in punt formation near midfield, approximately on their own 50 yard line. Observe the spacing between Light Team coverage players, noting any gunners or wings. Analyze the alignment of the Dark Team's return unit. Identify the depth of the returner and the positioning of the up-backs and perimeter defenders.
+
+As the Light Team snaps, track the blocking assignments of the line, particularly the center. Monitor the Dark Team's initial rush and how they attempt to penetrate the Light Team’s protection. Follow the punter’s drop and kick, noting the trajectory and distance of the punt.
+
+Simultaneously, observe the coverage unit’s pursuit, identifying their lanes and spacing downfield. On the Dark Team's side, track the returner's path and decision-making as he fields the punt. Assess the effectiveness of the Dark Team’s blocking scheme.
+
+The punt travels ~42 yards, landing around the Light Team 47. The Dark Team returner secures the ball and advances to the Light Team 36 before being tackled. Observe the returner's decisions. Note the final yardage gained on the return and how it impacted field position.
+
+[SCENE END]
+
+----------------------------------------
+
+

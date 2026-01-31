@@ -7,7 +7,10 @@ numpy>=1.24.0
 # HTTP requests for ESPN API
 requests>=2.31.0
 
-# Google AI for Gemini and Veo 3.1
+# xAI SDK for Grok Imagine video generation (preferred)
+xai-sdk>=1.6.0
+
+# Google AI for Gemini and Veo 3.1 (fallback)
 google-genai>=1.0.0
 google-generativeai>=0.8.0  # Still needed for scene generation
 
