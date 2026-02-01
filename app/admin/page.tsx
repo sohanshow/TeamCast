@@ -26,6 +26,10 @@ export default function AdminPage() {
   // Edit mode
   const [editingRoom, setEditingRoom] = useState<string | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
+  
+  // Kill all state
+  const [isKilling, setIsKilling] = useState(false);
+  const [killResult, setKillResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -124,6 +128,52 @@ export default function AdminPage() {
     return new Date(timestamp).toLocaleString();
   };
 
+  const killEverything = async () => {
+    const confirmMessage = 
+      '⚠️ DANGER ZONE ⚠️\n\n' +
+      'This will:\n' +
+      '• Delete ALL rooms from Firestore\n' +
+      '• Delete ALL comments from Firestore\n' +
+      '• Delete ALL participants from Firestore\n' +
+      '• Kill ALL active LiveKit rooms\n\n' +
+      'Type "KILL" to confirm:';
+    
+    const userInput = prompt(confirmMessage);
+    if (userInput !== 'KILL') {
+      return;
+    }
+
+    setIsKilling(true);
+    setKillResult(null);
+    
+    try {
+      const res = await fetch('/api/admin/reset-firestore', {
+        method: 'DELETE',
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to kill everything');
+      }
+      
+      setKillResult({
+        success: true,
+        message: `💥 Nuked! Firestore: ${JSON.stringify(data.deleted.firestore)}, LiveKit rooms: ${data.deleted.livekitRooms}`,
+      });
+      
+      // Refresh the rooms list
+      fetchRooms();
+    } catch (err) {
+      setKillResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsKilling(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
       {/* Header */}
@@ -134,12 +184,30 @@ export default function AdminPage() {
             TEAMCAST ADMIN
           </h1>
         </div>
-        <a 
-          href="/" 
-          className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
-        >
-          ← Back to App
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={killEverything}
+            disabled={isKilling}
+            className="px-4 py-2 text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40"
+          >
+            {isKilling ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Killing...
+              </>
+            ) : (
+              <>
+                💀 KILL ALL
+              </>
+            )}
+          </button>
+          <a 
+            href="/" 
+            className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+          >
+            ← Back to App
+          </a>
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-8 py-8">
@@ -147,6 +215,17 @@ export default function AdminPage() {
           <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-400">
             {error}
             <button onClick={() => setError(null)} className="ml-4 underline">Dismiss</button>
+          </div>
+        )}
+
+        {killResult && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            killResult.success 
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          }`}>
+            {killResult.message}
+            <button onClick={() => setKillResult(null)} className="ml-4 underline">Dismiss</button>
           </div>
         )}
 

@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import patriotLogo from './assets/patriot.png';
+import seahawkLogo from './assets/seahawk.png';
+import googleLogo from './assets/sponsors/google.png';
+import vercelLogo from './assets/sponsors/vercel.png';
+import livekitLogo from './assets/sponsors/livekit.jpeg';
 
 interface ActiveRoom {
   roomId: string;
@@ -12,11 +18,12 @@ interface ActiveRoom {
 
 export default function Home() {
   const [username, setUsername] = useState('');
-  const [roomCode, setRoomCode] = useState('');
+  const [hasEnteredUsername, setHasEnteredUsername] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
   const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [hoveredTeam, setHoveredTeam] = useState<string | null>(null);
   const router = useRouter();
 
   // Fetch active rooms on mount
@@ -41,36 +48,35 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleJoin = async (e: React.FormEvent, selectedRoomId?: string) => {
+  const getListenerCount = (roomId: string) => {
+    const room = activeRooms.find(r => r.roomId.toLowerCase() === roomId.toLowerCase());
+    return room?.listenerCount || 0;
+  };
+
+  const isRoomActive = (roomId: string) => {
+    return activeRooms.some(r => r.roomId.toLowerCase() === roomId.toLowerCase());
+  };
+
+  const handleUsernameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const targetRoom = selectedRoomId || roomCode;
-    
     if (!username.trim()) {
       setError('Please enter a username');
       return;
     }
-
-    if (!targetRoom.trim()) {
-      setError('Please select or enter a room code');
-      return;
-    }
-
-    setIsJoining(true);
     setError('');
-
-    try {
       sessionStorage.setItem('teamcast_username', username.trim());
-      sessionStorage.setItem('teamcast_room', targetRoom);
-      router.push(`/room/${targetRoom}`);
-    } catch (err) {
-      setError('Failed to join room. Please try again.');
-      setIsJoining(false);
-    }
+    setHasEnteredUsername(true);
   };
 
-  const handleRoomSelect = (room: ActiveRoom) => {
-    setRoomCode(room.roomId);
+  const handleTeamSelect = (team: 'patriots' | 'seahawks') => {
+    if (!isRoomActive(team)) return;
+    setIsJoining(true);
+    sessionStorage.setItem('teamcast_room', team);
+    router.push(`/room/${team}`);
   };
+
+  const patriotsActive = isRoomActive('patriots');
+  const seahawksActive = isRoomActive('seahawks');
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -89,10 +95,12 @@ export default function Home() {
         />
       </div>
 
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-16 lg:py-24">
-        <div className="grid lg:grid-cols-2 gap-16 items-start">
-          {/* Hero content */}
-          <div className="space-y-8">
+      <main className="relative z-10 max-w-5xl mx-auto px-6 py-16 lg:py-24">
+        <div className="flex flex-col items-center text-center space-y-8">
+          {/* Conditional rendering based on username state */}
+          {!hasEnteredUsername ? (
+            /* Username Entry - First Page */
+            <>
             {/* Live badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent-rose/10 border border-accent-rose/30 rounded-full">
               <span className="w-2 h-2 bg-accent-rose rounded-full animate-pulse" />
@@ -101,10 +109,10 @@ export default function Home() {
 
             {/* Logo & Title */}
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center gap-4">
                 <span className="text-5xl">🏈</span>
                 <h1 className="font-display text-6xl lg:text-7xl font-bold text-gradient tracking-tight">
-                  TEAMCAST
+                  TeamCast
                 </h1>
               </div>
               <p className="text-2xl lg:text-3xl text-steel-300 font-display">
@@ -112,95 +120,32 @@ export default function Home() {
               </p>
             </div>
 
-            <p className="text-lg text-steel-400 leading-relaxed max-w-lg">
+              <p className="text-lg text-steel-400 leading-relaxed max-w-xl">
               Join the ultimate pre-game experience. Listen to AI-powered analysis, 
               make predictions, and engage with fellow fans in real-time.
             </p>
 
-            {/* Active Rooms Section */}
-            {activeRooms.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-steel-300 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 bg-accent-emerald rounded-full animate-pulse" />
-                  Live Rooms
-                </h3>
-                <div className="space-y-2">
-                  {activeRooms.map((room) => (
-                    <button
-                      key={room.roomId}
-                      onClick={() => handleRoomSelect(room)}
-                      className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all
-                        ${roomCode === room.roomId 
-                          ? 'bg-accent/10 border-accent' 
-                          : 'bg-surface-overlay border-border hover:border-steel-700'
-                        }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">🎙️</span>
-                        <div className="text-left">
-                          <p className="font-semibold text-white">{room.name}</p>
-                          <p className="text-xs text-steel-500 font-mono">{room.roomId}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-1 text-xs font-medium bg-accent-emerald/20 text-accent-emerald rounded-full">
-                          {room.listenerCount} listening
-                        </span>
-                        {roomCode === room.roomId && (
-                          <span className="text-accent">✓</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+              {/* Username Entry Form */}
+              <div className="w-full max-w-md mt-8">
+                <div className="bg-surface/80 backdrop-blur-xl p-8 rounded-2xl border border-steel-800/50 shadow-2xl">
+                  <div className="space-y-2 text-center mb-6">
+                    <h2 className="text-xl font-semibold text-white">Welcome!</h2>
+                    <p className="text-steel-500 text-sm">Enter your display name to get started</p>
               </div>
-            )}
-
-            {loadingRooms && (
-              <div className="flex items-center gap-3 text-steel-500">
-                <div className="w-5 h-5 border-2 border-steel-700 border-t-accent rounded-full animate-spin" />
-                <span className="text-sm">Finding live rooms...</span>
-              </div>
-            )}
-
-            {!loadingRooms && activeRooms.length === 0 && (
-              <div className="p-4 bg-surface-overlay border border-border rounded-xl">
-                <p className="text-steel-400 text-sm">
-                  No live rooms at the moment. Enter a room code below or check back soon!
-                </p>
-              </div>
-            )}
-
-            {/* Join Form */}
-            <form onSubmit={(e) => handleJoin(e)} className="space-y-4 max-w-md">
+                  
+                  <form onSubmit={handleUsernameSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="username" className="block text-sm font-medium text-steel-300">
-                  Your Display Name
-                </label>
                 <input
-                  id="username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. SuperFan49"
-                  className="input-field"
+                        placeholder="Your display name"
+                        className="w-full px-4 py-4 bg-black/60 border border-steel-800 rounded-xl
+                                   text-white text-center text-lg placeholder-steel-600
+                                   focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30
+                                   transition-all duration-200"
                   maxLength={20}
-                  disabled={isJoining}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="room" className="block text-sm font-medium text-steel-300">
-                  Room Code {activeRooms.length > 0 && <span className="text-steel-600">(or select above)</span>}
-                </label>
-                <input
-                  id="room"
-                  type="text"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
-                  placeholder="Enter room code"
-                  className="input-field font-mono"
-                  disabled={isJoining}
+                        autoFocus
                 />
               </div>
 
@@ -211,99 +156,190 @@ export default function Home() {
               <button
                 type="submit"
                 className="btn-primary w-full py-4 text-lg"
-                disabled={isJoining || !roomCode.trim()}
-              >
-                {isJoining ? (
-                  <>
-                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Joining...
-                  </>
-                ) : (
-                  <>
-                    Join the Broadcast
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                  </>
-                )}
+                      disabled={!username.trim()}
+                    >
+                      Continue
               </button>
             </form>
-
-            {/* Features pills */}
-            <div className="flex flex-wrap gap-3">
-              {[
-                { icon: '🎙️', label: 'AI Hosts' },
-                { icon: '💬', label: 'Live Chat' },
-                { icon: '👥', label: '100 Listeners' },
-                { icon: '⚡', label: 'Real-time' },
-              ].map((feature) => (
-                <div
-                  key={feature.label}
-                  className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-border rounded-full"
-                >
-                  <span>{feature.icon}</span>
-                  <span className="text-sm font-medium text-steel-300">{feature.label}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Info cards */}
-          <div className="space-y-6">
-            <div className="card p-6 space-y-3 hover:border-steel-700 transition-colors">
-              <h3 className="flex items-center gap-2 text-lg font-semibold">
-                <span>🎯</span> What is TeamCast?
-              </h3>
-              <p className="text-steel-400 leading-relaxed">
-                TeamCast is an AI-powered live podcast experience for the Super Bowl. 
-                Our hosts Marcus & Jordan provide real-time analysis, respond to your 
-                comments, and keep the energy high as we count down to kickoff.
-              </p>
-            </div>
-
-            <div className="card p-6 space-y-3 hover:border-steel-700 transition-colors">
-              <h3 className="flex items-center gap-2 text-lg font-semibold">
-                <span>📢</span> Your Voice Matters
-              </h3>
-              <p className="text-steel-400 leading-relaxed">
-                Drop a comment and our AI hosts will address your questions and takes 
-                live on air. The best comments get featured in the broadcast!
-              </p>
-            </div>
-
-            <div className="card p-6 space-y-3 hover:border-steel-700 transition-colors">
-              <h3 className="flex items-center gap-2 text-lg font-semibold">
-                <span>🔊</span> How It Works
-              </h3>
-              <ul className="space-y-2 text-steel-400">
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-accent rounded-full" />
-                  Enter your name and join the room
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-accent rounded-full" />
-                  Listen to the live AI-generated podcast
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-accent rounded-full" />
-                  Share your thoughts in the chat
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-accent rounded-full" />
-                  Hear the hosts respond to the community
-                </li>
-              </ul>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-surface-raised rounded-lg border border-border-subtle">
-              <span className="text-sm text-steel-500">Powered by</span>
-              <div className="flex gap-2">
-                <span className="badge badge-accent">LiveKit</span>
-                <span className="badge badge-accent">Gemini AI</span>
-                <span className="badge badge-accent">Next.js</span>
               </div>
+
+              {/* Sponsors section */}
+              <div className="flex items-center justify-center gap-4 pt-8 mt-8 border-t border-border w-full max-w-md">
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={livekitLogo} alt="LiveKit" fill className="object-cover" />
+                </div>
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={googleLogo} alt="Google" fill className="object-cover" />
+                </div>
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={vercelLogo} alt="Vercel" fill className="object-cover" />
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Team Selection - Second Page */
+            <div className="w-full space-y-10">
+              {/* Title */}
+              <div className="space-y-2">
+                <p className="text-steel-500 text-sm uppercase tracking-[0.3em] font-medium">Pre-Game</p>
+                <h1 className="text-5xl lg:text-6xl font-bold text-white tracking-tight">
+                  Super Bowl 2026
+                </h1>
+                <p className="text-steel-400 mt-4 text-lg">
+                  Choose your team, <span className="text-accent font-semibold">{username}</span>
+              </p>
             </div>
+
+              {loadingRooms ? (
+                <div className="flex items-center justify-center gap-3 py-12 text-steel-500">
+                  <div className="w-5 h-5 border-2 border-steel-700 border-t-accent rounded-full animate-spin" />
+                  <span>Finding live rooms...</span>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+                  {/* Patriots Card */}
+                  <button
+                    onClick={() => handleTeamSelect('patriots')}
+                    onMouseEnter={() => patriotsActive && setHoveredTeam('patriots')}
+                    onMouseLeave={() => setHoveredTeam(null)}
+                    disabled={isJoining || !patriotsActive}
+                    className={`group relative aspect-square rounded-2xl overflow-hidden border-2 transition-all duration-300 
+                      ${!patriotsActive 
+                        ? 'opacity-40 cursor-not-allowed border-steel-900 grayscale' 
+                        : hoveredTeam === 'patriots' 
+                          ? 'border-[#C8102E] shadow-lg shadow-[#C8102E]/20 scale-[1.02]' 
+                          : 'border-steel-800 hover:border-steel-600 cursor-pointer'
+                      }
+                      ${isJoining ? 'opacity-50 cursor-not-allowed' : ''}
+                    `}
+                  >
+                    {/* Background gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#C8102E] via-[#0C2340] to-[#0C2340]" />
+                    
+                    {/* Logo container */}
+                    <div className="absolute inset-0 flex items-center justify-center p-8">
+                      <div className={`relative w-full h-full transition-transform duration-300 ${patriotsActive ? 'group-hover:scale-110' : ''}`}>
+                        <Image
+                          src={patriotLogo}
+                          alt="New England Patriots"
+                          fill
+                          className="object-contain drop-shadow-2xl"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Overlay info */}
+                    <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                      <h3 className="text-xl font-bold text-white">Patriots</h3>
+                      <div className="flex items-center justify-center gap-2 mt-1">
+                        {patriotsActive ? (
+                          <>
+                            <span className="w-2 h-2 bg-accent-emerald rounded-full animate-pulse" />
+                            <span className="text-sm text-steel-300">
+                              {getListenerCount('patriots')} listening
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-sm text-steel-500">Room not available</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Hover effect overlay */}
+                    {patriotsActive && (
+                      <div className={`absolute inset-0 bg-white/5 transition-opacity duration-300 ${hoveredTeam === 'patriots' ? 'opacity-100' : 'opacity-0'}`} />
+                    )}
+                  </button>
+
+                  {/* Seahawks Card */}
+                  <button
+                    onClick={() => handleTeamSelect('seahawks')}
+                    onMouseEnter={() => seahawksActive && setHoveredTeam('seahawks')}
+                    onMouseLeave={() => setHoveredTeam(null)}
+                    disabled={isJoining || !seahawksActive}
+                    className={`group relative aspect-square rounded-2xl overflow-hidden border-2 transition-all duration-300 
+                      ${!seahawksActive 
+                        ? 'opacity-40 cursor-not-allowed border-steel-900 grayscale' 
+                        : hoveredTeam === 'seahawks' 
+                          ? 'border-[#69BE28] shadow-lg shadow-[#69BE28]/20 scale-[1.02]' 
+                          : 'border-steel-800 hover:border-steel-600 cursor-pointer'
+                      }
+                      ${isJoining ? 'opacity-50 cursor-not-allowed' : ''}
+                    `}
+                  >
+                    {/* Background gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#002244] via-[#002244] to-[#69BE28]/30" />
+                    
+                    {/* Logo container */}
+                    <div className="absolute inset-0 flex items-center justify-center p-8">
+                      <div className={`relative w-full h-full transition-transform duration-300 ${seahawksActive ? 'group-hover:scale-110' : ''}`}>
+                        <Image
+                          src={seahawkLogo}
+                          alt="Seattle Seahawks"
+                          fill
+                          className="object-contain drop-shadow-2xl"
+                        />
+                      </div>
+            </div>
+
+                    {/* Overlay info */}
+                    <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                      <h3 className="text-xl font-bold text-white">Seahawks</h3>
+                      <div className="flex items-center justify-center gap-2 mt-1">
+                        {seahawksActive ? (
+                          <>
+                            <span className="w-2 h-2 bg-accent-emerald rounded-full animate-pulse" />
+                            <span className="text-sm text-steel-300">
+                              {getListenerCount('seahawks')} listening
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-sm text-steel-500">Room not available</span>
+                        )}
+                      </div>
+            </div>
+
+                    {/* Hover effect overlay */}
+                    {seahawksActive && (
+                      <div className={`absolute inset-0 bg-white/5 transition-opacity duration-300 ${hoveredTeam === 'seahawks' ? 'opacity-100' : 'opacity-0'}`} />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* No rooms available message */}
+              {!loadingRooms && !patriotsActive && !seahawksActive && (
+                <div className="text-center py-4">
+                  <p className="text-steel-500">No rooms are currently live. Check back soon!</p>
+                </div>
+              )}
+
+              {/* Back button */}
+              <button
+                onClick={() => setHasEnteredUsername(false)}
+                className="text-steel-500 hover:text-steel-300 text-sm transition-colors inline-flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+                Change username
+              </button>
+
+              {/* Sponsors section */}
+              <div className="flex items-center justify-center gap-4 pt-8 border-t border-border w-full max-w-md mx-auto">
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={livekitLogo} alt="LiveKit" fill className="object-cover" />
+                </div>
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={googleLogo} alt="Google" fill className="object-cover" />
+                </div>
+                <div className="relative w-6 h-6 overflow-hidden rounded">
+                  <Image src={vercelLogo} alt="Vercel" fill className="object-cover" />
+                </div>
+              </div>
           </div>
+          )}
         </div>
       </main>
 
