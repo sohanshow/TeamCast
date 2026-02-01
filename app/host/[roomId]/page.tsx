@@ -148,7 +148,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       const res = await fetch('/api/podcast/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, turns: 4, isCommentAnalysis, comments, context }),
+        body: JSON.stringify({ roomId, turns: 2, isCommentAnalysis, comments, context }),
       });
 
       if (!res.ok) return null;
@@ -266,9 +266,9 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
         }
       }
 
-      // Prefetch audio for upcoming turns (keep queue at 3) - skip if processing comments
+      // Prefetch audio for upcoming turns (keep queue at 2) - skip if processing comments
       while (
-        audioQueueRef.current.length < 3 &&
+        audioQueueRef.current.length < 2 &&
         currentTurnIndexRef.current < turnsRef.current.length &&
         !isProcessingCommentsRef.current // Stop if comments started processing
       ) {
