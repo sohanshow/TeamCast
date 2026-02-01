@@ -6,6 +6,8 @@ A real-time AI-powered podcast platform for Super Bowl pre-game analysis. Built 
 
 Aashrit Luthra, Vineet Reddy, Sohan Show
 
+Link: https://teamcast.vercel.app/
+
 ## Features
 
 - **🎙️ AI-Generated Podcasts** - Real-time podcast generation using Gemini AI with two AI hosts (Marcus & Jordan)
