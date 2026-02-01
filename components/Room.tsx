@@ -140,7 +140,7 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
     
     const interval = setInterval(() => {
       setCurrentImageIndex((prev) => (prev + 1) % teamImages.length);
-    }, 5000); // Change image every 5 seconds
+    }, 15000); // Change image every 15 seconds
     
     return () => clearInterval(interval);
   }, [isBroadcasting, teamImages.length]);
@@ -268,8 +268,6 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
                             priority={index === 0}
                           />
                         ))}
-                        {/* Gradient overlay for readability */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                       </>
                     ) : (
                       /* Fallback for non-team rooms */
@@ -281,56 +279,6 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
                       </div>
                     )}
                     
-                    {/* Live overlay content */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-end pb-8 z-10">
-                      {/* Audio visualization bars */}
-                      <div className="flex items-end gap-1.5 h-12 mb-4">
-                        {[...Array(16)].map((_, i) => (
-                          <div
-                            key={i}
-                            className={`w-1.5 rounded-full animate-pulse ${
-                              team === 'patriots' 
-                                ? 'bg-gradient-to-t from-red-600 to-blue-700' 
-                                : team === 'seahawks'
-                                ? 'bg-gradient-to-t from-green-500 to-blue-600'
-                                : 'bg-gradient-to-t from-accent to-accent-cyan'
-                            }`}
-                            style={{
-                              height: `${20 + Math.random() * 80}%`,
-                              animationDelay: `${i * 0.08}s`,
-                              animationDuration: `${0.4 + Math.random() * 0.4}s`
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div className="text-center">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold tracking-wider rounded-full mb-3">
-                          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                          LIVE
-                        </div>
-                        <p className="text-2xl font-display font-bold text-white drop-shadow-lg">🎧 Live Analysis</p>
-                        <p className="text-white/70 mt-1 drop-shadow">
-                          {remoteParticipants.length + 1} listening
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Image indicator dots */}
-                    {teamImages.length > 0 && (
-                      <div className="absolute bottom-3 right-3 flex gap-1.5 z-20">
-                        {teamImages.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={() => setCurrentImageIndex(index)}
-                            className={`w-2 h-2 rounded-full transition-all ${
-                              index === currentImageIndex 
-                                ? 'bg-white scale-125' 
-                                : 'bg-white/40 hover:bg-white/60'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
                   </>
                 )}
               </div>

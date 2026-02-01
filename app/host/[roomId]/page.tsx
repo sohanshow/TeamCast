@@ -124,6 +124,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   const isGeneratingRef = useRef(false);
   const isBroadcastingRef = useRef(false);
   const isProcessingCommentsRef = useRef(false); // Block prefetching during comment processing
+  const isTrackPublishedRef = useRef(false); // Track if LiveKit track is published
   const lastCommentCheckRef = useRef(Date.now());
 
   // Generate podcast script with conversation history
@@ -203,8 +204,37 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
     return null;
   };
 
+  // Publish audio track to LiveKit (called on first audio play)
+  const publishAudioTrack = async () => {
+    if (isTrackPublishedRef.current || !mediaStreamDestRef.current) return;
+    
+    try {
+      const audioTrack = new LocalAudioTrack(
+        mediaStreamDestRef.current.stream.getAudioTracks()[0],
+        undefined,
+        false
+      );
+      audioTrackRef.current = audioTrack;
+
+      await localParticipant.publishTrack(audioTrack, {
+        name: 'podcast-audio',
+        source: Track.Source.Microphone,
+      });
+
+      isTrackPublishedRef.current = true;
+      console.log('[Host] Audio track published to LiveKit - listeners will now see LIVE');
+    } catch (err) {
+      console.error('[Host] Failed to publish audio track:', err);
+    }
+  };
+
   // Play audio buffer through LiveKit
-  const playAudioBuffer = (buffer: AudioBuffer): Promise<void> => {
+  const playAudioBuffer = async (buffer: AudioBuffer): Promise<void> => {
+    // Publish track on first audio play (this is when listeners should see "LIVE")
+    if (!isTrackPublishedRef.current) {
+      await publishAudioTrack();
+    }
+
     return new Promise((resolve) => {
       if (!audioContextRef.current || !mediaStreamDestRef.current) {
         resolve();
@@ -316,16 +346,10 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       if (res.ok) {
         const data = await res.json();
         if (data.pendingCommentBatch && data.pendingCommentBatch.comments?.length > 0) {
-          // SET FLAG IMMEDIATELY to stop all prefetching
+          // SET FLAG IMMEDIATELY to stop all prefetching (but let current audio continue)
           isProcessingCommentsRef.current = true;
           
-          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - STOPPING PREFETCH & PRIORITIZING`);
-          
-          // CLEAR THE QUEUE IMMEDIATELY before anything else
-          const clearedCount = audioQueueRef.current.length;
-          audioQueueRef.current = [];
-          setQueueSize(0);
-          console.log(`[Host] 🗑️ Cleared ${clearedCount} queued tracks to make room for comments`);
+          console.log(`[Host] 🎤 Found ${data.pendingCommentBatch.comments.length} unprocessed comments - preparing response...`);
           
           // Mark comments as processed to prevent duplicate processing
           await fetch('/api/room/status', {
@@ -334,12 +358,12 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
             body: JSON.stringify({ roomId }),
           });
           
-          // Generate comment analysis script
+          // Generate comment analysis script (let current audio continue playing)
           const script = await generateScript(true, data.pendingCommentBatch.comments);
           if (script && script.turns.length > 0) {
             console.log(`[Host] Generated ${script.turns.length} comment response turns - fetching TTS...`);
             
-            // Fetch TTS for comment turns
+            // Fetch TTS for ALL comment turns FIRST before clearing queue
             const commentAudios: QueuedAudio[] = [];
             for (let i = 0; i < script.turns.length; i++) {
               const turn = script.turns[i];
@@ -347,13 +371,16 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
               const audio = await fetchTTSBuffer(turn, -1 - i); // Negative index to indicate priority
               if (audio) {
                 commentAudios.push(audio);
-                // Add to queue as we get each one for faster playback start
-                audioQueueRef.current.push(audio);
-                setQueueSize(audioQueueRef.current.length);
               }
             }
             
-            console.log(`[Host] ✅ Added ${commentAudios.length} comment turns to queue - ready for immediate playback`);
+            // NOW clear the queue and insert comment audio (only after TTS is ready)
+            if (commentAudios.length > 0) {
+              const clearedCount = audioQueueRef.current.length;
+              audioQueueRef.current = [...commentAudios]; // Replace with comment audio
+              setQueueSize(audioQueueRef.current.length);
+              console.log(`[Host] 🗑️ Cleared ${clearedCount} queued tracks, inserted ${commentAudios.length} comment turns - ready for playback`);
+            }
           }
           
           // UNSET FLAG to allow prefetching to resume
@@ -383,24 +410,11 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
     setStatus('starting');
 
     try {
-      // Initialize audio context
+      // Initialize audio context (track will be published on first audio play)
       audioContextRef.current = new AudioContext();
       mediaStreamDestRef.current = audioContextRef.current.createMediaStreamDestination();
 
-      // Create and publish LiveKit track
-      const audioTrack = new LocalAudioTrack(
-        mediaStreamDestRef.current.stream.getAudioTracks()[0],
-        undefined,
-        false
-      );
-      audioTrackRef.current = audioTrack;
-
-      await localParticipant.publishTrack(audioTrack, {
-        name: 'podcast-audio',
-        source: Track.Source.Microphone,
-      });
-
-      console.log('[Host] Audio track published to LiveKit');
+      console.log('[Host] Audio context initialized, generating content...');
 
       // Generate initial content
       const script = await generateScript();
@@ -416,7 +430,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
       // Prefetch first few turns
       await prefetchTTS();
       
-      // Start playback
+      // Start playback (track will be published when first audio plays)
       playNext();
     } catch (err) {
       console.error('[Host] Failed to start broadcast:', err);
@@ -427,6 +441,7 @@ function HostBroadcaster({ roomId }: { roomId: string }) {
   // Stop broadcasting
   const stopBroadcast = async () => {
     isBroadcastingRef.current = false;
+    isTrackPublishedRef.current = false;
     
     if (audioTrackRef.current) {
       await localParticipant.unpublishTrack(audioTrackRef.current);
