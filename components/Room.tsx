@@ -12,6 +12,50 @@ import '@livekit/components-styles';
 import Comments from './Comments';
 import ParticipantList from './ParticipantList';
 import TeamAnalyticsPanel from './TeamAnalyticsPanel';
+import Image from 'next/image';
+
+// Import banner image
+import bannerImg from '@/app/assets/banner.jpg';
+
+// Import Patriots images (12 images)
+import patriots2 from '@/app/assets/patriots/2.jpeg';
+import patriots3 from '@/app/assets/patriots/3.jpeg';
+import patriots4 from '@/app/assets/patriots/4.webp';
+import patriots5 from '@/app/assets/patriots/5.jpeg';
+import patriots7 from '@/app/assets/patriots/7.webp';
+import patriots8 from '@/app/assets/patriots/8.webp';
+import patriots9 from '@/app/assets/patriots/9.jpeg';
+import patriots10 from '@/app/assets/patriots/10.webp';
+import patriots12 from '@/app/assets/patriots/12.webp';
+import patriots13 from '@/app/assets/patriots/13.webp';
+import patriots14 from '@/app/assets/patriots/14.webp';
+import patriots15 from '@/app/assets/patriots/15.webp';
+
+// Import Seahawks images (12 images)
+import seahawks1 from '@/app/assets/seahawks/1.jpg';
+import seahawks2 from '@/app/assets/seahawks/2.webp';
+import seahawks4 from '@/app/assets/seahawks/4.webp';
+import seahawks5 from '@/app/assets/seahawks/5.webp';
+import seahawks6 from '@/app/assets/seahawks/6.webp';
+import seahawks7 from '@/app/assets/seahawks/7.webp';
+import seahawks8 from '@/app/assets/seahawks/8.webp';
+import seahawks9 from '@/app/assets/seahawks/9.webp';
+import seahawks11 from '@/app/assets/seahawks/11.jpg';
+import seahawks12 from '@/app/assets/seahawks/12.jpg';
+import seahawks14 from '@/app/assets/seahawks/14.webp';
+import seahawks15 from '@/app/assets/seahawks/15.jpg';
+
+const patriotsImages = [
+  patriots2, patriots3, patriots4, patriots5, patriots7,
+  patriots8, patriots9, patriots10, patriots12, patriots13,
+  patriots14, patriots15,
+];
+
+const seahawksImages = [
+  seahawks1, seahawks2, seahawks4, seahawks5, seahawks6,
+  seahawks7, seahawks8, seahawks9, seahawks11, seahawks12,
+  seahawks14, seahawks15,
+];
 
 interface RoomProps {
   roomName: string;
@@ -71,11 +115,17 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
   const isBroadcasting = audioTracks.length > 0;
   const [showWaitingMessage, setShowWaitingMessage] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   // Determine team from room name (seahawks or patriots)
   const team = roomName.toLowerCase().includes('seahawk') ? 'seahawks' 
              : roomName.toLowerCase().includes('patriot') ? 'patriots' 
              : null;
+
+  // Get team-specific images
+  const teamImages = team === 'patriots' ? patriotsImages 
+                   : team === 'seahawks' ? seahawksImages 
+                   : [];
 
   // Hide waiting message after connection
   useEffect(() => {
@@ -83,6 +133,17 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
       setShowWaitingMessage(false);
     }
   }, [isBroadcasting]);
+
+  // Cycle through images when broadcasting
+  useEffect(() => {
+    if (!isBroadcasting || teamImages.length === 0) return;
+    
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev + 1) % teamImages.length);
+    }, 5000); // Change image every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [isBroadcasting, teamImages.length]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -158,81 +219,123 @@ function RoomContent({ roomName, username, userId, isConnected, connectionError 
             {/* Audio Player Visual - Listener Mode */}
             <div className="card overflow-hidden">
               <div className="aspect-video bg-gradient-to-br from-steel-900 via-surface to-steel-800 flex items-center justify-center relative">
-                {/* Background pattern */}
-                <div className="absolute inset-0 opacity-10">
-                  <div className="absolute inset-0" style={{
-                    backgroundImage: `radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)`,
-                    backgroundSize: '32px 32px'
-                  }} />
-                </div>
-
-                {!isConnected && (
-                  <div className="flex flex-col items-center gap-4 z-10">
-                    <div className="w-16 h-16 border-4 border-steel-700 border-t-accent rounded-full animate-spin" />
-                    <p className="text-xl font-display font-semibold text-steel-300">Connecting to room...</p>
-                  </div>
-                )}
-
-                {isConnected && !isBroadcasting && (
-                  <div className="flex flex-col items-center gap-4 z-10">
-                    <div className="text-6xl">📻</div>
-                    <p className="text-xl font-display font-semibold text-steel-300">Waiting for broadcast...</p>
-                    <p className="text-sm text-steel-500 text-center max-w-xs">
-                      The host hasn't started broadcasting yet. Please wait or check back later.
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                      <span className="text-sm text-amber-400">Listening for audio stream...</span>
+                {/* Waiting state: Show banner with overlay */}
+                {(!isConnected || !isBroadcasting) && (
+                  <>
+                    <Image
+                      src={bannerImg}
+                      alt="Super Bowl LIX"
+                      fill
+                      className="object-cover"
+                      priority
+                    />
+                    <div className="absolute inset-0 bg-black/40" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                      {!isConnected ? (
+                        <>
+                          <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-6" />
+                          <p className="text-2xl font-display font-bold text-white">Connecting to room...</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="relative mb-6">
+                            <div className="w-20 h-20 border-4 border-white/20 rounded-full" />
+                            <div className="absolute inset-0 w-20 h-20 border-4 border-transparent border-t-cyan-400 border-r-pink-500 rounded-full animate-spin" />
+                          </div>
+                          <p className="text-3xl font-display font-bold text-white mb-2">Hosts shall join shortly.</p>
+                          <p className="text-lg text-white/60">Get ready for Super Bowl LIX coverage</p>
+                        </>
+                      )}
                     </div>
-                  </div>
+                  </>
                 )}
 
+                {/* Broadcasting state: Cycle through team images */}
                 {isConnected && isBroadcasting && (
-                  <div className="flex flex-col items-center gap-6 z-10">
-                    {/* Audio visualization bars */}
-                    <div className="flex items-end gap-1 h-16">
-                      {[...Array(12)].map((_, i) => (
-                        <div
-                          key={i}
-                          className="w-2 bg-gradient-to-t from-accent to-accent-cyan rounded-full animate-pulse"
-                          style={{
-                            height: `${20 + Math.random() * 80}%`,
-                            animationDelay: `${i * 0.1}s`,
-                            animationDuration: `${0.5 + Math.random() * 0.5}s`
-                          }}
-                        />
-                      ))}
+                  <>
+                    {/* Team images cycling */}
+                    {teamImages.length > 0 ? (
+                      <>
+                        {teamImages.map((img, index) => (
+                          <Image
+                            key={index}
+                            src={img}
+                            alt={`${team} image ${index + 1}`}
+                            fill
+                            className={`object-cover transition-opacity duration-1000 ${
+                              index === currentImageIndex ? 'opacity-100' : 'opacity-0'
+                            }`}
+                            priority={index === 0}
+                          />
+                        ))}
+                        {/* Gradient overlay for readability */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                      </>
+                    ) : (
+                      /* Fallback for non-team rooms */
+                      <div className="absolute inset-0 opacity-10">
+                        <div className="absolute inset-0" style={{
+                          backgroundImage: `radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)`,
+                          backgroundSize: '32px 32px'
+                        }} />
+                      </div>
+                    )}
+                    
+                    {/* Live overlay content */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-end pb-8 z-10">
+                      {/* Audio visualization bars */}
+                      <div className="flex items-end gap-1.5 h-12 mb-4">
+                        {[...Array(16)].map((_, i) => (
+                          <div
+                            key={i}
+                            className={`w-1.5 rounded-full animate-pulse ${
+                              team === 'patriots' 
+                                ? 'bg-gradient-to-t from-red-600 to-blue-700' 
+                                : team === 'seahawks'
+                                ? 'bg-gradient-to-t from-green-500 to-blue-600'
+                                : 'bg-gradient-to-t from-accent to-accent-cyan'
+                            }`}
+                            style={{
+                              height: `${20 + Math.random() * 80}%`,
+                              animationDelay: `${i * 0.08}s`,
+                              animationDuration: `${0.4 + Math.random() * 0.4}s`
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="text-center">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold tracking-wider rounded-full mb-3">
+                          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                          LIVE
+                        </div>
+                        <p className="text-2xl font-display font-bold text-white drop-shadow-lg">🎧 Live Analysis</p>
+                        <p className="text-white/70 mt-1 drop-shadow">
+                          {remoteParticipants.length + 1} listening
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-display font-bold text-white">🎧 Live Analysis</p>
-                      <p className="text-steel-400 mt-1">
-                        Listening to the broadcast
-                      </p>
-                      <p className="text-xs text-steel-600 mt-2">
-                        {remoteParticipants.length} others listening
-                      </p>
-                    </div>
-                  </div>
+
+                    {/* Image indicator dots */}
+                    {teamImages.length > 0 && (
+                      <div className="absolute bottom-3 right-3 flex gap-1.5 z-20">
+                        {teamImages.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setCurrentImageIndex(index)}
+                            className={`w-2 h-2 rounded-full transition-all ${
+                              index === currentImageIndex 
+                                ? 'bg-white scale-125' 
+                                : 'bg-white/40 hover:bg-white/60'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            {/* Features */}
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { icon: '🎙️', title: 'AI-Powered Analysis', desc: 'Real-time insights by Gemini' },
-                { icon: '💬', title: 'Interactive Comments', desc: 'Your comments shape the show' },
-                { icon: '👥', title: 'Community Listening', desc: 'Experience it with fellow fans' },
-              ].map((feature) => (
-                <div key={feature.title} className="flex gap-4 p-5 bg-surface-overlay border border-border rounded-xl">
-                  <span className="text-2xl">{feature.icon}</span>
-                  <div>
-                    <h4 className="font-semibold text-sm">{feature.title}</h4>
-                    <p className="text-xs text-steel-500 mt-0.5">{feature.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Right column - Chat & Participants */}
