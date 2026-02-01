@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // Get room to check lastCommentProcessedAt
     const room = await getRoomByRoomId(roomId);
-    const lastProcessedAt = (room as Record<string, unknown>)?.lastCommentProcessedAt as number || 0;
+    const lastProcessedAt = (room as unknown as Record<string, unknown>)?.lastCommentProcessedAt as number || 0;
     
     // Get all comments from Firestore
     const allComments = await getComments(roomId);
